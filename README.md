@@ -58,7 +58,7 @@
 ## Installation
 
 ### From Pre-built Package (Recommended)
-1. Download the latest `ferretwatch-firefox-v2.0.0.zip` from the dist/ folder
+1. Download the latest `ferretwatch-firefox-v2.1.0.zip` from the dist/ folder
 2. Extract the ZIP file to a permanent location on your computer
 3. Open Firefox and navigate to `about:debugging`
 4. Click "This Firefox" on the left sidebar

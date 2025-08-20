@@ -8,13 +8,10 @@ let currentTab = null;
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 FerretWatch popup loading...');
     setTimeout(initializePopup, 100);
 });
 
 async function initializePopup() {
-    console.log('🔧 Initializing popup...');
-    
     try {
         // Get current tab
         const tabs = await browser.tabs.query({ active: true, currentWindow: true });
@@ -39,8 +36,6 @@ async function initializePopup() {
         // Update status
         updateStatus('active', 'Scanner ready');
         
-        console.log('✅ Popup initialized successfully');
-        
     } catch (error) {
         console.error('❌ Popup initialization error:', error);
         updateStatus('error', 'Initialization failed');
@@ -48,73 +43,58 @@ async function initializePopup() {
 }
 
 function setupButtonHandlers() {
-    console.log('🔧 Setting up button handlers...');
-    
     // Rescan button
     const rescanBtn = document.getElementById('rescanBtn');
     if (rescanBtn) {
         rescanBtn.onclick = function() {
-            console.log('🔄 Rescan button clicked!');
             handleRescan();
         };
-        console.log('✅ Rescan button ready');
     }
     
     // Settings button
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn) {
         settingsBtn.onclick = function() {
-            console.log('⚙️ Settings button clicked!');
             showSettings();
         };
-        console.log('✅ Settings button ready');
     }
     
     // Whitelist button
     const whitelistBtn = document.getElementById('whitelistBtn');
     if (whitelistBtn) {
         whitelistBtn.onclick = function() {
-            console.log('📝 Whitelist button clicked!');
             handleWhitelist();
         };
-        console.log('✅ Whitelist button ready');
     }
     
     // Export button
     const exportBtn = document.getElementById('exportBtn');
     if (exportBtn) {
         exportBtn.onclick = function() {
-            console.log('📊 Export button clicked!');
             toggleExport();
         };
-        console.log('✅ Export button ready');
     }
     
     // Settings modal close button
     const closeSettings = document.getElementById('closeSettings');
     if (closeSettings) {
         closeSettings.onclick = function() {
-            console.log('❌ Close settings clicked!');
             hideSettings();
         };
-        console.log('✅ Close settings button ready');
     }
     
     // Save settings button (now just close)
     const saveSettings = document.getElementById('saveSettings');
     if (saveSettings) {
         saveSettings.onclick = function() {
-            console.log('💾 Save settings clicked!');
             saveSettingsData();
         };
-        console.log('✅ Save settings button ready');
     }
     
     // Export dropdown options
     const exportJSON = document.getElementById('exportJSON');
     if (exportJSON) {
         exportJSON.onclick = function() {
-            console.log('📄 Export JSON clicked!');
             exportData('json');
         };
     }
@@ -122,16 +102,7 @@ function setupButtonHandlers() {
     const exportCSV = document.getElementById('exportCSV');
     if (exportCSV) {
         exportCSV.onclick = function() {
-            console.log('📊 Export CSV clicked!');
             exportData('csv');
-        };
-    }
-    
-    const exportHistory = document.getElementById('exportHistory');
-    if (exportHistory) {
-        exportHistory.onclick = function() {
-            console.log('📚 Export History clicked!');
-            exportSessionHistory();
         };
     }
     
@@ -139,10 +110,8 @@ function setupButtonHandlers() {
     const manageWhitelist = document.getElementById('manageWhitelist');
     if (manageWhitelist) {
         manageWhitelist.onclick = function() {
-            console.log('📋 Manage whitelist clicked!');
             toggleWhitelistView();
         };
-        console.log('✅ Manage whitelist button ready');
     }
     
     // Modal click-outside to close
@@ -154,8 +123,6 @@ function setupButtonHandlers() {
             }
         };
     }
-    
-    console.log('🎉 All button handlers set up successfully!');
 }
 
 // Button handler functions
@@ -339,12 +306,10 @@ async function handleWhitelist() {
 }
 
 function toggleExport() {
-    console.log('📊 Toggling export dropdown...');
     const dropdown = document.getElementById('exportOptions');
     if (dropdown) {
         const isVisible = dropdown.style.display === 'block';
         dropdown.style.display = isVisible ? 'none' : 'block';
-        console.log(`📊 Export dropdown ${isVisible ? 'hidden' : 'shown'}`);
     }
 }
 
@@ -364,57 +329,130 @@ async function exportData(format) {
             throw new Error('No active tab');
         }
         
-        // Try to get findings from content script
+        // Try to get findings from content script with multiple approaches
         let findings = [];
+        
+        // Method 1: Try to get via message
         try {
+            console.log('📤 Trying method 1: message to content script');
             const response = await browser.tabs.sendMessage(currentTab.id, { 
                 action: 'getCurrentFindings' 
             });
-            if (response && response.success && response.findings) {
+            if (response && response.success && Array.isArray(response.findings) && response.findings.length > 0) {
                 findings = response.findings;
+                console.log('✅ Method 1 success: Got', findings.length, 'findings');
+            } else {
+                console.log('⚠️ Method 1: No findings or invalid response');
             }
         } catch (error) {
-            console.log('Could not get findings from content script, trying fallback...');
-            
-            // Fallback: try to get findings via script injection
+            console.log('❌ Method 1 failed:', error.message);
+        }
+        
+        // Method 2: Try via script injection if method 1 failed
+        if (findings.length === 0) {
             try {
+                console.log('📤 Trying method 2: script injection');
                 const results = await browser.tabs.executeScript(currentTab.id, {
                     code: `
                         (function() {
-                            // Try to get from global debug object
-                            if (window.FerretWatchDebug && window.FerretWatchDebug.getLastScanResults) {
-                                return window.FerretWatchDebug.getLastScanResults();
-                            }
-                            // Try to get from lastScanResults variable if exposed
-                            if (typeof window.lastScanResults !== 'undefined' && Array.isArray(window.lastScanResults)) {
+                            console.log('🔍 Export: Checking for findings...');
+                            
+                            // Try multiple global variables
+                            if (window.lastScanResults && Array.isArray(window.lastScanResults) && window.lastScanResults.length > 0) {
+                                console.log('✅ Found lastScanResults:', window.lastScanResults.length);
                                 return window.lastScanResults;
+                            }
+                            
+                            if (window.FerretWatchDebug && typeof window.FerretWatchDebug.getLastScanResults === 'function') {
+                                const results = window.FerretWatchDebug.getLastScanResults();
+                                if (Array.isArray(results) && results.length > 0) {
+                                    console.log('✅ Found via debug object:', results.length);
+                                    return results;
+                                }
+                            }
+                            
+                            // Try to trigger a fresh scan
+                            if (window.FerretWatchDebug && typeof window.FerretWatchDebug.scanCurrentPage === 'function') {
+                                console.log('🔍 Triggering fresh scan...');
+                                const scanResults = window.FerretWatchDebug.scanCurrentPage();
+                                if (Array.isArray(scanResults)) {
+                                    console.log('✅ Fresh scan results:', scanResults.length);
+                                    return scanResults;
+                                }
+                            }
+                            
+                            console.log('❌ No findings found via any method');
+                            return [];
+                        })();
+                    `
+                });
+                
+                if (results && results[0] && Array.isArray(results[0]) && results[0].length > 0) {
+                    findings = results[0];
+                    console.log('✅ Method 2 success: Got', findings.length, 'findings');
+                } else {
+                    console.log('⚠️ Method 2: No findings found');
+                }
+            } catch (error) {
+                console.log('❌ Method 2 failed:', error.message);
+            }
+        }
+        
+        // Method 3: Force a scan and try again
+        if (findings.length === 0) {
+            try {
+                console.log('📤 Trying method 3: force scan then export');
+                await browser.tabs.executeScript(currentTab.id, {
+                    code: `
+                        (async function() {
+                            console.log('🔍 Force scan for export...');
+                            if (window.FerretWatchDebug && typeof window.FerretWatchDebug.scanCurrentPage === 'function') {
+                                try {
+                                    const results = await window.FerretWatchDebug.scanCurrentPage();
+                                    window.lastExportFindings = results;
+                                    console.log('✅ Force scan complete:', results.length);
+                                    return results;
+                                } catch (error) {
+                                    console.error('❌ Force scan error:', error);
+                                    return [];
+                                }
                             }
                             return [];
                         })();
                     `
                 });
                 
-                if (results && results[0] && Array.isArray(results[0])) {
+                // Wait a moment then try to get the results
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                const results = await browser.tabs.executeScript(currentTab.id, {
+                    code: `window.lastExportFindings || []`
+                });
+                
+                if (results && results[0] && Array.isArray(results[0]) && results[0].length > 0) {
                     findings = results[0];
+                    console.log('✅ Method 3 success: Got', findings.length, 'findings');
                 }
-            } catch (fallbackError) {
-                console.log('Fallback export method also failed');
+            } catch (error) {
+                console.log('❌ Method 3 failed:', error.message);
             }
         }
         
-        // Create export data
+        // Create export data even if no findings (for debugging)
         const url = new URL(currentTab.url);
         const exportData = {
             timestamp: new Date().toISOString(),
             domain: url.hostname,
             url: currentTab.url,
             title: currentTab.title,
+            scannerVersion: '2.1.0',
             findings: findings.map(f => ({
                 type: f.type || 'Unknown',
-                risk: f.riskLevel || f.risk || 'unknown',  // Use riskLevel first, fall back to risk
+                risk: f.riskLevel || f.risk || 'unknown',
                 value: f.value || 'Unknown',
                 context: f.context || '',
-                position: f.position || 0
+                position: f.position || 0,
+                timestamp: f.timestamp || new Date().toISOString()
             })),
             summary: {
                 total: findings.length,
@@ -422,6 +460,12 @@ async function exportData(format) {
                 high: findings.filter(f => (f.riskLevel || f.risk) === 'high').length,
                 medium: findings.filter(f => (f.riskLevel || f.risk) === 'medium').length,
                 low: findings.filter(f => (f.riskLevel || f.risk) === 'low').length
+            },
+            exportMethod: findings.length > 0 ? 'success' : 'no_findings',
+            debugInfo: {
+                tabId: currentTab.id,
+                userAgent: navigator.userAgent,
+                exportTime: Date.now()
             }
         };
         
@@ -440,8 +484,13 @@ async function exportData(format) {
         // Download file
         downloadFile(content, filename);
         
-        updateStatus('active', `✅ Exported ${findings.length} findings`);
-        console.log('✅ Export completed:', filename);
+        if (findings.length > 0) {
+            updateStatus('active', `✅ Exported ${findings.length} findings`);
+            console.log('✅ Export completed:', filename, 'with', findings.length, 'findings');
+        } else {
+            updateStatus('warning', `⚠️ Exported empty dataset - scan page first`);
+            console.log('⚠️ Export completed with no findings. File created for debugging.');
+        }
         
         setTimeout(() => updateStatus('active', 'Scanner ready'), 3000);
         
@@ -455,18 +504,32 @@ function convertToCSV(data) {
     const headers = ['Domain', 'URL', 'Type', 'Risk', 'Value', 'Context', 'Timestamp'];
     const rows = [headers.join(',')];
     
-    data.findings.forEach(finding => {
+    if (data.findings && data.findings.length > 0) {
+        data.findings.forEach(finding => {
+            const row = [
+                `"${data.domain || ''}"`,
+                `"${data.url || ''}"`,
+                `"${finding.type || 'Unknown'}"`,
+                `"${finding.risk || 'unknown'}"`,
+                `"${finding.value || 'Unknown'}"`,
+                `"${(finding.context || '').replace(/"/g, '""')}"`,
+                `"${finding.timestamp || data.timestamp || new Date().toISOString()}"`
+            ];
+            rows.push(row.join(','));
+        });
+    } else {
+        // Add a row indicating no findings
         const row = [
-            `"${data.domain}"`,
-            `"${data.url}"`,
-            `"${finding.type}"`,
-            `"${finding.risk}"`,
-            `"${finding.value}"`,
-            `"${finding.context.replace(/"/g, '""')}"`,
-            `"${data.timestamp}"`
+            `"${data.domain || ''}"`,
+            `"${data.url || ''}"`,
+            `"No findings"`,
+            `"none"`,
+            `"N/A"`,
+            `"Page scanned but no credentials detected"`,
+            `"${data.timestamp || new Date().toISOString()}"`
         ];
         rows.push(row.join(','));
-    });
+    }
     
     return rows.join('\n');
 }
@@ -487,10 +550,7 @@ function downloadFile(content, filename) {
     setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
-function exportSessionHistory() {
-    console.log('📚 Exporting session history...');
-    alert('Session history export is not implemented yet.');
-}
+
 
 function toggleWhitelistView() {
     console.log('📋 Toggling whitelist view...');

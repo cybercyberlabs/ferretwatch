@@ -61,6 +61,68 @@ if (typeof importScripts !== 'undefined') {
         });
     }
 
+    function buildNotificationContent(container, content, risk) {
+        // Create title
+        const title = document.createElement('div');
+        title.style.cssText = 'text-align: center; font-weight: bold; margin-bottom: 12px; font-size: 15px; color: white;';
+        title.textContent = `${content.emoji} ${content.title}`;
+        container.appendChild(title);
+        
+        // Create findings
+        if (content.findings && content.findings.length > 0) {
+            content.findings.forEach(finding => {
+                const findingDiv = document.createElement('div');
+                findingDiv.style.cssText = 'margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; border-left: 3px solid ' + getRiskColor(finding.riskLevel || 'medium') + ';';
+                
+                // Finding header
+                const header = document.createElement('div');
+                header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;';
+                
+                const typeSpan = document.createElement('span');
+                typeSpan.style.cssText = 'font-weight: bold; font-size: 13px;';
+                typeSpan.textContent = finding.type;
+                header.appendChild(typeSpan);
+                
+                const badgeSpan = document.createElement('span');
+                badgeSpan.style.cssText = `background: ${getRiskColor(finding.riskLevel || 'medium')}; color: white; padding: 2px 6px; border-radius: 12px; font-size: 10px; font-weight: bold;`;
+                badgeSpan.textContent = (finding.riskLevel || 'unknown').toUpperCase();
+                header.appendChild(badgeSpan);
+                
+                findingDiv.appendChild(header);
+                
+                // Finding value
+                const valueDiv = document.createElement('div');
+                valueDiv.style.cssText = 'font-family: monospace; font-size: 12px; color: rgba(255,255,255,0.9);';
+                valueDiv.textContent = maskSecret(finding.value);
+                findingDiv.appendChild(valueDiv);
+                
+                // Finding context
+                if (finding.context && finding.context.trim() !== '' && finding.context !== 'N/A') {
+                    const contextDiv = document.createElement('div');
+                    contextDiv.style.cssText = 'font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 4px; font-style: italic;';
+                    contextDiv.textContent = `"${finding.context.substring(0, 50)}${finding.context.length > 50 ? '...' : ''}"`;
+                    findingDiv.appendChild(contextDiv);
+                }
+                
+                container.appendChild(findingDiv);
+            });
+        }
+        
+        // More findings indicator
+        if (content.moreCount > 0) {
+            const moreDiv = document.createElement('div');
+            moreDiv.style.cssText = 'margin: 8px 0; padding: 6px; text-align: center; font-style: italic; color: rgba(255,255,255,0.8); border-top: 1px solid rgba(255,255,255,0.2);';
+            moreDiv.textContent = `📊 +${content.moreCount} more credential${content.moreCount > 1 ? 's' : ''} found`;
+            container.appendChild(moreDiv);
+        }
+        
+        // Footer
+        const footer = document.createElement('div');
+        footer.style.cssText = 'margin-top: 12px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.3); font-size: 11px; color: rgba(255,255,255,0.8); text-align: center;';
+        footer.textContent = '💡 Click to dismiss • Check browser console for full details';
+        container.appendChild(footer);
+    }
+
     // --- UI and Notification Functions ---
 
     function getRiskColor(risk) {
@@ -88,13 +150,20 @@ if (typeof importScripts !== 'undefined') {
         return secret.slice(0, 4) + '...' + secret.slice(-4);
     }
 
-    function showNotification(message, risk = 'medium') {
+    function showNotification(content, risk = 'medium') {
         const existing = document.querySelectorAll('.cyber-labs-credential-notification');
         existing.forEach(el => el.remove());
         
         const notification = document.createElement('div');
         notification.className = 'cyber-labs-credential-notification';
-        notification.textContent = message; // Use textContent instead of innerHTML for security
+        
+        // Handle both string and object content
+        if (typeof content === 'string') {
+            notification.textContent = content;
+        } else if (content && typeof content === 'object') {
+            // Build notification DOM structure
+            buildNotificationContent(notification, content, risk);
+        }
         
         Object.assign(notification.style, {
             position: 'fixed',
@@ -247,37 +316,16 @@ if (typeof importScripts !== 'undefined') {
                 `🆕 ${newFindings.length} New Credential${newFindings.length > 1 ? 's' : ''} Found` : 
                 `🚨 ${findings.length} Credential${findings.length > 1 ? 's' : ''} Detected`;
             
-            const displayFindings = (newFindings.length > 0 ? newFindings : findings).slice(0, 3).map(f => {
-                const riskColor = getRiskColor(f.riskLevel || 'medium');
-                const riskBadge = f.riskLevel ? f.riskLevel.toUpperCase() : 'UNKNOWN';
-                return `
-                    <div style="margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; border-left: 3px solid ${riskColor};">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                            <span style="font-weight: bold; font-size: 13px;">${f.type}</span>
-                            <span style="background: ${riskColor}; color: white; padding: 2px 6px; border-radius: 12px; font-size: 10px; font-weight: bold;">${riskBadge}</span>
-                        </div>
-                        <div style="font-family: monospace; font-size: 12px; color: rgba(255,255,255,0.9);">${maskSecret(f.value)}</div>
-                        ${f.context && f.context.trim() !== '' && f.context !== 'N/A' ? 
-                            `<div style="font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 4px; font-style: italic;">"${f.context.substring(0, 50)}${f.context.length > 50 ? '...' : ''}"</div>` : 
-                            ''
-                        }
-                    </div>`;
-            }).join('');
-            
-            const more = findings.length > 3 ? `
-                <div style="margin: 8px 0; padding: 6px; text-align: center; font-style: italic; color: rgba(255,255,255,0.8); border-top: 1px solid rgba(255,255,255,0.2);">
-                    📊 +${findings.length - 3} more credential${findings.length - 3 > 1 ? 's' : ''} found
-                </div>` : '';
+            const displayFindings = (newFindings.length > 0 ? newFindings : findings).slice(0, 3);
+            const moreCount = findings.length > 3 ? findings.length - 3 : 0;
 
             showNotification(
-                `<div style="text-align: center; font-weight: bold; margin-bottom: 12px; font-size: 15px; color: white;">
-                    ${riskEmoji} ${notificationTitle}
-                </div>
-                ${displayFindings}
-                ${more}
-                <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.3); font-size: 11px; color: rgba(255,255,255,0.8); text-align: center;">
-                    💡 Click to dismiss • Check browser console for full details
-                </div>`,
+                {
+                    emoji: riskEmoji,
+                    title: notificationTitle,
+                    findings: displayFindings,
+                    moreCount: moreCount
+                },
                 highestRisk
             );
         } else {
@@ -462,27 +510,12 @@ if (typeof importScripts !== 'undefined') {
         }
     };
     
+    
     window.FerretWatchDebug = {
         version: '2.1.0',
-        testPatterns: () => {
-            console.log('🧪 Available patterns:', window.SECURITY_PATTERNS);
-        },
         scanCurrentPage: async () => {
-            console.log('🧪 Manual page scan...');
             const findings = await runScan();
-            console.log(`🧪 Manual scan results: ${findings.length} findings`, findings);
             return findings;
-        },
-        showPatterns: () => {
-            console.log('🧪 Available patterns:', window.SECURITY_PATTERNS);
-        },
-        checkDependencies: () => {
-            return {
-                ProgressiveScanner: !!window.ProgressiveScanner,
-                SECURITY_PATTERNS: !!window.SECURITY_PATTERNS,
-                StorageUtils: !!window.StorageUtils,
-                scanner: !!window.scanner
-            };
         },
         getLastScanResults: () => {
             return lastScanResults;
@@ -492,6 +525,4 @@ if (typeof importScripts !== 'undefined') {
     // Expose scanner instance and results for fallback access
     window.scanner = scanner;
     window.lastScanResults = lastScanResults;
-    
-    console.log('🧪 Debug functions available: FerretWatchDebug.testPatterns(), FerretWatchDebug.scanCurrentPage()');
 })();
