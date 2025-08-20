@@ -1,34 +1,149 @@
-# Universal Store Submission Guide
+# FerretWatch - Store Submission Guide
 
-This guide provides comprehensive instructions for submitting the Credential Scanner extension to multiple browser extension stores.
+## Overview
 
-## Pre-Submission Checklist ✅
+FerretWatch v2.1.0 is ready for submission to browser extension stores with enhanced visual notifications, robust export functionality, and improved false-positive prevention.
 
-All requirements have been met for multi-store submission:
+## Package Information
+
+| Browser | Package | Size | Manifest |
+|---------|---------|------|----------|
+| Firefox | ferretwatch-firefox-v2.1.0.zip | 72K | V2 |
+| Chrome | ferretwatch-chrome-v2.1.0.zip | 72K | V3 |
+| Edge | ferretwatch-edge-v2.1.0.zip | 72K | V3 |
+
+## Submission Checklist
 
 ### ✅ Technical Requirements
-- [x] Cross-browser compatibility implemented
-- [x] Manifest V2 (Firefox) and V3 (Chrome/Edge) support
-- [x] Service worker implementation for Chromium browsers
-- [x] Browser compatibility layer completed
-- [x] All features tested across platforms
-
-### ✅ Documentation Complete
-- [x] User guide with installation instructions
-- [x] Developer guide with contribution guidelines
-- [x] API reference documentation
-- [x] Privacy policy and terms of service
-- [x] README with comprehensive information
+- [x] Cross-browser compatibility (Firefox, Chrome, Edge)
+- [x] Manifest V2/V3 support with compatibility layers
+- [x] Service worker implementation for Chromium
+- [x] Comprehensive testing framework
+- [x] Performance optimized (< 500ms for large content)
 
 ### ✅ Quality Assurance
-- [x] Automated testing framework
-- [x] Cross-browser compatibility tests (83% pass rate)
-- [x] Unit tests for core functionality
-- [x] Integration tests for scanning features
-- [x] Performance benchmarks established
+- [x] 60+ security pattern validation
+- [x] False positive prevention with context awareness
+- [x] Export functionality (JSON/CSV) tested
+- [x] Enhanced visual notifications
+- [x] Memory efficient (< 50MB delta per operation)
 
-### ✅ Distribution Packages
-- [x] Firefox package: credential-scanner-firefox-v1.5.0.zip (61,236 bytes)
+### ✅ Documentation
+- [x] User guide with installation instructions
+- [x] Developer documentation
+- [x] API reference
+- [x] Privacy policy compliance
+- [x] Release notes v2.1.0
+
+## Store-Specific Requirements
+
+### Firefox Add-ons (AMO)
+- **Package**: `dist/ferretwatch-firefox-v2.1.0.zip`
+- **Manifest**: V2 with WebExtensions APIs
+- **Permissions**: `activeTab`, `storage`
+- **Category**: Developer Tools / Security
+- **Review Time**: 1-3 days
+
+### Chrome Web Store  
+- **Package**: `dist/ferretwatch-chrome-v2.1.0.zip`
+- **Manifest**: V3 with service worker
+- **Permissions**: `activeTab`, `storage`
+- **Category**: Productivity / Developer Tools
+- **Review Time**: 1-7 days
+
+### Microsoft Edge Add-ons
+- **Package**: `dist/ferretwatch-edge-v2.1.0.zip`  
+- **Manifest**: V3 Chromium-compatible
+- **Permissions**: `activeTab`, `storage`
+- **Category**: Productivity / Developer Tools
+- **Review Time**: 1-5 days
+
+## Key Features to Highlight
+
+### 🎨 Enhanced User Experience
+- Beautiful gradient notifications with risk-based badges
+- Smooth animations and professional design
+- Clear contextual information display
+- Risk-categorized visual indicators
+
+### 📊 Robust Export System
+- JSON export with complete metadata
+- CSV format for spreadsheet analysis
+- Risk level summaries and statistics
+- Timestamp and URL audit trails
+
+### 🔍 Advanced Detection
+- 60+ credential patterns (AWS, GitHub, Google, etc.)
+- Context-aware false positive prevention
+- Multi-tiered risk assessment
+- Real-time progressive scanning
+
+### 🛡️ Security & Privacy
+- No data transmitted externally
+- Local processing only
+- Secure value masking in logs
+- Configurable sensitivity levels
+
+## Submission Steps
+
+### 1. Prepare Materials
+```bash
+# Ensure clean build
+./build.sh
+
+# Verify packages
+ls -la dist/ferretwatch-*-v2.1.0.zip
+```
+
+### 2. Store Listings
+
+**Title**: FerretWatch - Credential & Secret Scanner
+
+**Short Description**: 
+Professional security extension that scans web pages for exposed credentials, API keys, and secrets with beautiful notifications and export capabilities.
+
+**Detailed Description**:
+FerretWatch automatically detects exposed credentials and secrets on web pages, including API keys, database passwords, authentication tokens, and more. With enhanced visual notifications, robust export functionality, and intelligent false-positive prevention, it's essential for security professionals and developers.
+
+**Keywords**: security, credentials, api keys, scanner, developer tools, privacy, audit
+
+### 3. Privacy Policy Points
+- No external data transmission
+- Local processing only  
+- No personal information collected
+- Optional storage for user preferences
+- No tracking or analytics
+
+### 4. Screenshots Required
+- Main notification display (enhanced design)
+- Export functionality demonstration  
+- Console output with findings
+- Settings/configuration interface
+
+## Post-Submission
+
+### Monitoring
+- Track review status in each store
+- Respond promptly to reviewer feedback
+- Monitor user feedback and ratings
+- Plan regular updates based on usage
+
+### Updates
+- Bug fixes and improvements
+- New pattern additions
+- Performance enhancements
+- User-requested features
+
+## Support
+
+- **Documentation**: Available in `docs/` directory
+- **Issues**: Report via GitHub repository
+- **Updates**: Automatic through browser extension stores
+- **Contact**: cybercyberlabs.com
+
+---
+
+**Ready for Production**: All packages tested and verified for store submission.
 - [x] Chrome package: credential-scanner-chrome-v1.5.0.zip (60,923 bytes)
 - [x] Edge package: credential-scanner-edge-v1.5.0.zip (60,923 bytes)
 

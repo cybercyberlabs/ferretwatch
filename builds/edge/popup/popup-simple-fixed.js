@@ -100,7 +100,7 @@ function setupButtonHandlers() {
         console.log('✅ Close settings button ready');
     }
     
-    // Save settings button (now just close)
+    // Save settings button
     const saveSettings = document.getElementById('saveSettings');
     if (saveSettings) {
         saveSettings.onclick = function() {
@@ -108,6 +108,16 @@ function setupButtonHandlers() {
             saveSettingsData();
         };
         console.log('✅ Save settings button ready');
+    }
+    
+    // Reset settings button
+    const resetSettings = document.getElementById('resetSettings');
+    if (resetSettings) {
+        resetSettings.onclick = function() {
+            console.log('🔄 Reset settings clicked!');
+            resetSettingsData();
+        };
+        console.log('✅ Reset settings button ready');
     }
     
     // Export dropdown options
@@ -133,16 +143,6 @@ function setupButtonHandlers() {
             console.log('📚 Export History clicked!');
             exportSessionHistory();
         };
-    }
-    
-    // Manage Whitelist button
-    const manageWhitelist = document.getElementById('manageWhitelist');
-    if (manageWhitelist) {
-        manageWhitelist.onclick = function() {
-            console.log('📋 Manage whitelist clicked!');
-            toggleWhitelistView();
-        };
-        console.log('✅ Manage whitelist button ready');
     }
     
     // Modal click-outside to close
@@ -236,22 +236,10 @@ async function handleRescan() {
 function showSettings() {
     console.log('⚙️ Showing settings modal...');
     const modal = document.getElementById('settingsModal');
-    console.log('🔧 Modal element found:', !!modal);
-    
     if (modal) {
-        console.log('🔧 Setting modal display to flex...');
         modal.style.display = 'flex';
-        modal.style.visibility = 'visible';
-        
-        console.log('🔧 Adding modal-open class to body...');
         document.body.classList.add('modal-open');
-        
-        console.log('🔧 Loading settings data...');
         loadSettingsData();
-        
-        console.log('✅ Modal should now be visible');
-    } else {
-        console.error('❌ Settings modal not found in DOM!');
     }
 }
 
@@ -267,13 +255,83 @@ function hideSettings() {
 function loadSettingsData() {
     console.log('📖 Loading settings data...');
     
+    // Set default values
+    document.getElementById('historyCount').textContent = '0';
+    
+    // Enable all checkboxes
+    const checkboxes = document.querySelectorAll('#settingsModal input[type="checkbox"]');
+    checkboxes.forEach(checkbox => {
+        checkbox.disabled = false;
+    });
+    
+    // Load settings from storage
+    if (typeof browser !== 'undefined' && browser.storage) {
+        browser.storage.local.get(['ferretWatchSettings']).then(result => {
+            const settings = result.ferretWatchSettings || {};
+            
+            // Apply settings with defaults
+            const settingsConfig = {
+                enableProgressiveScan: settings.enableProgressiveScan !== false,
+                enableEntropyFilter: settings.enableEntropyFilter !== false,
+                enableContextFilter: settings.enableContextFilter !== false,
+                maskSecretsInExport: settings.maskSecretsInExport !== false,
+                includeMetadataInExport: settings.includeMetadataInExport !== false,
+                enableInPageHighlighting: settings.enableInPageHighlighting === true,
+                enableHighlightControls: settings.enableHighlightControls !== false
+            };
+            
+            // Apply to checkboxes
+            Object.keys(settingsConfig).forEach(key => {
+                const checkbox = document.getElementById(key);
+                if (checkbox) {
+                    checkbox.checked = settingsConfig[key];
+                }
+            });
+            
+            console.log('✅ Settings loaded:', settingsConfig);
+        }).catch(err => {
+            console.log('⚠️ Could not load settings, using defaults');
+        });
+    }
+    
     // Load whitelist info
     updateWhitelistInfo();
 }
 
 function saveSettingsData() {
-    console.log('💾 Closing settings...');
+    console.log('💾 Saving settings...');
+    
+    const settings = {
+        enableProgressiveScan: document.getElementById('enableProgressiveScan').checked,
+        enableEntropyFilter: document.getElementById('enableEntropyFilter').checked,
+        enableContextFilter: document.getElementById('enableContextFilter').checked,
+        maskSecretsInExport: document.getElementById('maskSecretsInExport').checked,
+        includeMetadataInExport: document.getElementById('includeMetadataInExport').checked,
+        enableInPageHighlighting: document.getElementById('enableInPageHighlighting').checked,
+        enableHighlightControls: document.getElementById('enableHighlightControls').checked
+    };
+    
+    if (typeof browser !== 'undefined' && browser.storage) {
+        browser.storage.local.set({ ferretWatchSettings: settings });
+    }
+    
+    console.log('✅ Settings saved:', settings);
     hideSettings();
+}
+
+function resetSettingsData() {
+    console.log('🔄 Resetting settings...');
+    
+    // Reset to defaults
+    document.getElementById('enableProgressiveScan').checked = true;
+    document.getElementById('enableEntropyFilter').checked = true;
+    document.getElementById('enableContextFilter').checked = true;
+    document.getElementById('maskSecretsInExport').checked = true;
+    document.getElementById('includeMetadataInExport').checked = true;
+    document.getElementById('enableInPageHighlighting').checked = false;
+    document.getElementById('enableHighlightControls').checked = true;
+    
+    console.log('✅ Settings reset to defaults');
 }
 
 async function handleWhitelist() {
@@ -370,36 +428,11 @@ async function exportData(format) {
             const response = await browser.tabs.sendMessage(currentTab.id, { 
                 action: 'getCurrentFindings' 
             });
-            if (response && response.success && response.findings) {
+            if (response && response.findings) {
                 findings = response.findings;
             }
         } catch (error) {
-            console.log('Could not get findings from content script, trying fallback...');
-            
-            // Fallback: try to get findings via script injection
-            try {
-                const results = await browser.tabs.executeScript(currentTab.id, {
-                    code: `
-                        (function() {
-                            // Try to get from global debug object
-                            if (window.FerretWatchDebug && window.FerretWatchDebug.getLastScanResults) {
-                                return window.FerretWatchDebug.getLastScanResults();
-                            }
-                            // Try to get from lastScanResults variable if exposed
-                            if (typeof window.lastScanResults !== 'undefined' && Array.isArray(window.lastScanResults)) {
-                                return window.lastScanResults;
-                            }
-                            return [];
-                        })();
-                    `
-                });
-                
-                if (results && results[0] && Array.isArray(results[0])) {
-                    findings = results[0];
-                }
-            } catch (fallbackError) {
-                console.log('Fallback export method also failed');
-            }
+            console.log('📡 Could not get findings from content script');
         }
         
         // Create export data
@@ -411,17 +444,17 @@ async function exportData(format) {
             title: currentTab.title,
             findings: findings.map(f => ({
                 type: f.type || 'Unknown',
-                risk: f.riskLevel || f.risk || 'unknown',  // Use riskLevel first, fall back to risk
-                value: f.value || 'Unknown',
+                risk: f.risk || 'unknown',
+                value: f.maskedValue || 'Hidden',
                 context: f.context || '',
                 position: f.position || 0
             })),
             summary: {
                 total: findings.length,
-                critical: findings.filter(f => (f.riskLevel || f.risk) === 'critical').length,
-                high: findings.filter(f => (f.riskLevel || f.risk) === 'high').length,
-                medium: findings.filter(f => (f.riskLevel || f.risk) === 'medium').length,
-                low: findings.filter(f => (f.riskLevel || f.risk) === 'low').length
+                critical: findings.filter(f => f.risk === 'critical').length,
+                high: findings.filter(f => f.risk === 'high').length,
+                medium: findings.filter(f => f.risk === 'medium').length,
+                low: findings.filter(f => f.risk === 'low').length
             }
         };
         
@@ -491,101 +524,6 @@ function exportSessionHistory() {
     console.log('📚 Exporting session history...');
     alert('Session history export is not implemented yet.');
 }
-
-function toggleWhitelistView() {
-    console.log('📋 Toggling whitelist view...');
-    const whitelistView = document.getElementById('whitelistView');
-    const manageButton = document.getElementById('manageWhitelist');
-    
-    if (whitelistView && manageButton) {
-        const isVisible = whitelistView.style.display !== 'none';
-        
-        if (isVisible) {
-            // Hide the whitelist
-            whitelistView.style.display = 'none';
-            manageButton.textContent = 'Manage Whitelist';
-            console.log('📋 Whitelist view hidden');
-        } else {
-            // Show the whitelist
-            whitelistView.style.display = 'block';
-            manageButton.textContent = 'Hide Whitelist';
-            displayWhitelistItems();
-            console.log('📋 Whitelist view shown');
-        }
-    }
-}
-
-async function displayWhitelistItems() {
-    console.log('📋 Loading whitelist items...');
-    const whitelistList = document.getElementById('whitelistList');
-    
-    if (!whitelistList) {
-        console.error('❌ Whitelist list element not found');
-        return;
-    }
-    
-    try {
-        const storage = await browser.storage.local.get(['whitelistedDomains']);
-        const whitelistedDomains = storage.whitelistedDomains || [];
-        
-        if (whitelistedDomains.length === 0) {
-            whitelistList.innerHTML = '<p style="color: #666; font-style: italic; margin: 10px 0;">No domains whitelisted</p>';
-            console.log('📋 No whitelisted domains found');
-            return;
-        }
-        
-        // Create HTML for each whitelisted domain
-        const itemsHtml = whitelistedDomains.map((domain, index) => `
-            <div class="whitelist-item" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee;">
-                <span class="domain-name" style="font-family: monospace; color: #333;">${domain}</span>
-                <button class="btn btn-tiny btn-danger" onclick="removeDomainFromWhitelist('${domain}')" style="padding: 2px 8px; font-size: 11px;">Remove</button>
-            </div>
-        `).join('');
-        
-        whitelistList.innerHTML = itemsHtml;
-        console.log(`✅ Displayed ${whitelistedDomains.length} whitelisted domains`);
-        
-    } catch (error) {
-        console.error('❌ Error loading whitelist items:', error);
-        whitelistList.innerHTML = '<p style="color: #e74c3c; font-style: italic; margin: 10px 0;">Error loading whitelist</p>';
-    }
-}
-
-async function removeDomainFromWhitelist(domain) {
-    console.log('🗑️ Removing domain from whitelist:', domain);
-    
-    try {
-        const storage = await browser.storage.local.get(['whitelistedDomains']);
-        let whitelistedDomains = storage.whitelistedDomains || [];
-        
-        // Remove the domain
-        const originalLength = whitelistedDomains.length;
-        whitelistedDomains = whitelistedDomains.filter(d => d !== domain);
-        
-        if (whitelistedDomains.length < originalLength) {
-            // Save the updated list
-            await browser.storage.local.set({ whitelistedDomains });
-            
-            // Refresh the display
-            displayWhitelistItems();
-            updateWhitelistInfo();
-            updateWhitelistStatus();
-            
-            console.log('✅ Domain removed from whitelist:', domain);
-            alert(`✅ Removed ${domain} from whitelist`);
-        } else {
-            console.log('⚠️ Domain not found in whitelist:', domain);
-            alert(`Domain ${domain} was not found in whitelist`);
-        }
-        
-    } catch (error) {
-        console.error('❌ Error removing domain from whitelist:', error);
-        alert('Error removing domain from whitelist: ' + error.message);
-    }
-}
-
-// Make the remove function globally accessible for inline onclick handlers
-window.removeDomainFromWhitelist = removeDomainFromWhitelist;
 
 async function updateWhitelistStatus() {
     if (!currentTab) return;

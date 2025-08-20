@@ -68,6 +68,16 @@
         return colors[risk] || colors.medium;
     }
 
+    function getDarkerRiskColor(risk) {
+        const colors = {
+            critical: '#b71c1c',
+            high: '#e65100', 
+            medium: '#4a148c',
+            low: '#1b5e20'
+        };
+        return colors[risk] || colors.medium;
+    }
+
     function maskSecret(secret) {
         if (!secret || secret.length < 8) return '***';
         return secret.slice(0, 4) + '...' + secret.slice(-4);
@@ -85,27 +95,75 @@
             position: 'fixed',
             top: '20px',
             right: '20px',
-            background: getRiskColor(risk),
+            background: `linear-gradient(135deg, ${getRiskColor(risk)}, ${getDarkerRiskColor(risk)})`,
             color: '#fff',
-            padding: '15px 20px',
-            borderRadius: '8px',
+            padding: '16px 20px',
+            borderRadius: '12px',
             zIndex: '10000',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-            maxWidth: '400px',
-            fontSize: '14px',
-            lineHeight: '1.4',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2)',
+            maxWidth: '420px',
+            minWidth: '320px',
+            fontSize: '13px',
+            lineHeight: '1.5',
             cursor: 'pointer',
-            fontFamily: 'system-ui, -apple-system, sans-serif'
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            border: '1px solid rgba(255,255,255,0.2)',
+            backdropFilter: 'blur(10px)',
+            transition: 'all 0.3s ease',
+            animation: 'slideInRight 0.3s ease-out'
         });
         
+        // Add CSS animation keyframes
+        if (!document.getElementById('ferretwatch-animations')) {
+            const style = document.createElement('style');
+            style.id = 'ferretwatch-animations';
+            style.textContent = `
+                @keyframes slideInRight {
+                    from {
+                        transform: translateX(100%);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateX(0);
+                        opacity: 1;
+                    }
+                }
+                
+                @keyframes slideOutRight {
+                    from {
+                        transform: translateX(0);
+                        opacity: 1;
+                    }
+                    to {
+                        transform: translateX(100%);
+                        opacity: 0;
+                    }
+                }
+                
+                .cyber-labs-credential-notification:hover {
+                    transform: translateY(-2px) !important;
+                    box-shadow: 0 12px 40px rgba(0,0,0,0.4), 0 6px 20px rgba(0,0,0,0.3) !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
         notification.addEventListener('click', () => {
-            notification.remove();
+            notification.style.animation = 'slideOutRight 0.3s ease-in forwards';
+            setTimeout(() => {
+                if (notification.parentNode) notification.remove();
+            }, 300);
             notificationDismissed = true;
         });
         
         setTimeout(() => {
-            if (notification.parentNode) notification.remove();
-        }, 10000);
+            if (notification.parentNode) {
+                notification.style.animation = 'slideOutRight 0.3s ease-in forwards';
+                setTimeout(() => {
+                    if (notification.parentNode) notification.remove();
+                }, 300);
+            }
+        }, 12000);
         
         document.body.appendChild(notification);
     }
@@ -120,17 +178,43 @@
             url: window.location.href,
             domain: window.location.hostname
         }));
+        
+        // Update the global window reference
+        window.lastScanResults = lastScanResults;
 
         if (findings.length === 0) {
             console.log("%c✅ No credentials found on this page.", "color: green; font-weight: bold;");
             return;
         }
 
-        console.log(`%c🚨 Found ${findings.length} potential credential${findings.length > 1 ? 's' : ''}!`, "color: red; font-weight: bold;");
+        // Enhanced console output with better formatting
+        console.log(`%c🚨 FERRETWATCH SECURITY SCAN RESULTS 🚨`, "color: white; background: #d32f2f; font-weight: bold; padding: 8px; border-radius: 4px; font-size: 16px;");
+        console.log(`%c📍 Domain: ${window.location.hostname}`, "color: #1976d2; font-weight: bold;");
+        console.log(`%c🔍 Found ${findings.length} potential credential${findings.length > 1 ? 's' : ''}`, "color: #d32f2f; font-weight: bold; font-size: 14px;");
+        console.log("%c" + "═".repeat(80), "color: #666;");
+
         findings.forEach((finding, index) => {
-            console.log(`%c${index + 1}. ${finding.type}`, `color: ${getRiskColor(finding.riskLevel)}; font-weight: bold;`);
-            console.log(`   Value: ${maskSecret(finding.value)} (Risk: ${finding.riskLevel.toUpperCase()})`);
-            console.log(`   Context: ${finding.context ? finding.context.substring(0, 100) : 'N/A'}...`);
+            const riskLevel = finding.riskLevel || 'unknown';
+            const riskColor = getRiskColor(riskLevel);
+            const riskEmoji = {
+                critical: '🔥',
+                high: '⚠️',
+                medium: '📋',
+                low: '📝',
+                unknown: '❓'
+            }[riskLevel] || '❓';
+            
+            console.log(`%c${riskEmoji} FINDING #${index + 1}`, `color: white; background: ${riskColor}; font-weight: bold; padding: 4px 8px; border-radius: 3px;`);
+            console.log(`%c   📝 Type: ${finding.type}`, "color: #333; font-weight: bold;");
+            console.log(`%c   🔐 Value: ${maskSecret(finding.value)}`, "color: #666;");
+            console.log(`%c   ⚡ Risk: ${riskLevel.toUpperCase()}`, `color: ${riskColor}; font-weight: bold;`);
+            
+            if (finding.context && finding.context.trim() !== '' && finding.context !== 'N/A') {
+                console.log(`%c   📍 Context: "${finding.context.substring(0, 120)}${finding.context.length > 120 ? '...' : ''}"`, "color: #795548; font-style: italic;");
+            } else {
+                console.log(`%c   📍 Context: Not available`, "color: #999; font-style: italic;");
+            }
+            console.log("%c" + "─".repeat(60), "color: #ddd;");
         });
 
         const newFindings = findings.filter(f => !seenCredentials.has(f.type + '|' + f.value));
@@ -139,18 +223,56 @@
         if (newFindings.length > 0 || !notificationDismissed) {
             const highestRisk = findings.reduce((highest, f) => {
                 const riskLevels = ['low', 'medium', 'high', 'critical'];
-                return riskLevels.indexOf(f.riskLevel) > riskLevels.indexOf(highest) ? f.riskLevel : highest;
+                const currentRisk = f.riskLevel || 'unknown';
+                const currentIndex = riskLevels.indexOf(currentRisk);
+                const highestIndex = riskLevels.indexOf(highest);
+                return currentIndex > highestIndex ? currentRisk : highest;
             }, 'low');
             
-            const notificationPrefix = newFindings.length > 0 ? `🆕 Found ${newFindings.length} new credential(s)` : `🚨 Found ${findings.length} potential credential(s)`;
-            const displayFindings = (newFindings.length > 0 ? newFindings : findings).slice(0, 3).map(f =>
-                `<div style="margin: 4px 0;"><strong>${f.type}:</strong> ${maskSecret(f.value)}</div>`
-            ).join('');
-            const more = findings.length > 3 ? `<div style="margin: 8px 0; font-style: italic;">...and ${findings.length - 3} more</div>` : '';
+            // Enhanced notification with better visual structure
+            const riskEmoji = {
+                critical: '🔥',
+                high: '⚠️',
+                medium: '📋',
+                low: '📝',
+                unknown: '❓'
+            }[highestRisk] || '📋';
+            
+            const notificationTitle = newFindings.length > 0 ? 
+                `🆕 ${newFindings.length} New Credential${newFindings.length > 1 ? 's' : ''} Found` : 
+                `🚨 ${findings.length} Credential${findings.length > 1 ? 's' : ''} Detected`;
+            
+            const displayFindings = (newFindings.length > 0 ? newFindings : findings).slice(0, 3).map(f => {
+                const riskColor = getRiskColor(f.riskLevel || 'medium');
+                const riskBadge = f.riskLevel ? f.riskLevel.toUpperCase() : 'UNKNOWN';
+                return `
+                    <div style="margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; border-left: 3px solid ${riskColor};">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span style="font-weight: bold; font-size: 13px;">${f.type}</span>
+                            <span style="background: ${riskColor}; color: white; padding: 2px 6px; border-radius: 12px; font-size: 10px; font-weight: bold;">${riskBadge}</span>
+                        </div>
+                        <div style="font-family: monospace; font-size: 12px; color: rgba(255,255,255,0.9);">${maskSecret(f.value)}</div>
+                        ${f.context && f.context.trim() !== '' && f.context !== 'N/A' ? 
+                            `<div style="font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 4px; font-style: italic;">"${f.context.substring(0, 50)}${f.context.length > 50 ? '...' : ''}"</div>` : 
+                            ''
+                        }
+                    </div>`;
+            }).join('');
+            
+            const more = findings.length > 3 ? `
+                <div style="margin: 8px 0; padding: 6px; text-align: center; font-style: italic; color: rgba(255,255,255,0.8); border-top: 1px solid rgba(255,255,255,0.2);">
+                    📊 +${findings.length - 3} more credential${findings.length - 3 > 1 ? 's' : ''} found
+                </div>` : '';
 
             showNotification(
-                `<div style="font-weight: bold; margin-bottom: 8px;">${notificationPrefix}</div>` + displayFindings + more +
-                `<div style="margin-top: 8px; font-size: 12px; opacity: 0.9;">Click to dismiss • Check console for details</div>`,
+                `<div style="text-align: center; font-weight: bold; margin-bottom: 12px; font-size: 15px; color: white;">
+                    ${riskEmoji} ${notificationTitle}
+                </div>
+                ${displayFindings}
+                ${more}
+                <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.3); font-size: 11px; color: rgba(255,255,255,0.8); text-align: center;">
+                    💡 Click to dismiss • Check browser console for full details
+                </div>`,
                 highestRisk
             );
         } else {
@@ -186,6 +308,7 @@
     async function initializeScanner() {
         try {
             await loadWhitelist();
+            await loadSettings(); // Load settings into cache
             if (isDomainWhitelisted()) {
                 console.log('🔕 FerretWatch disabled for domain:', currentDomain);
                 return;
@@ -218,8 +341,11 @@
                 notificationDismissed = false;
                 const results = await runScan();
                 sendResponse({ success: true, findings: results });
+                return true;
             } else if (message.action === 'getCurrentFindings') {
-                sendResponse({ success: true, findings: lastScanResults });
+                const resultsToSend = lastScanResults.length > 0 ? lastScanResults : (window.lastScanResults || []);
+                sendResponse({ success: true, findings: resultsToSend });
+                return true;
             }
             // Keep other message handlers for whitelist etc.
             else if (message.action === 'addToWhitelist') {
@@ -236,6 +362,7 @@
                 } catch (error) {
                     sendResponse({ success: false, error: error.message });
                 }
+                return true;
             } else if (message.action === 'removeFromWhitelist') {
                 try {
                     await loadWhitelist();
@@ -246,6 +373,7 @@
                 } catch (error) {
                     sendResponse({ success: false, error: error.message });
                 }
+                return true;
             } else if (message.action === 'getWhitelist') {
                 await loadWhitelist();
                 sendResponse({
@@ -254,8 +382,111 @@
                     currentDomain: currentDomain,
                     isWhitelisted: isDomainWhitelisted()
                 });
+                return true;
             }
             return true;
         });
     }
+
+    // --- Expose globals for testing and debugging ---
+    window.ProgressiveScanner = ProgressiveScanner;
+    window.SECURITY_PATTERNS = window.SECURITY_PATTERNS; // Already loaded from patterns.js
+    // Settings cache for synchronous access
+    let settingsCache = {
+        maxFindings: 50,
+        scanningMode: 'progressive', 
+        scanDelay: 500,
+        enableDebounce: true,
+        enabledCategories: {
+            aws: true,
+            github: true,
+            slack: true,
+            discord: true,
+            apiKeys: true,
+            azure: true,
+            gcp: true,
+            jwt: true,
+            services: true,
+            passwords: true,
+            keys_and_certificates: true,
+            database: true,
+            environment: true
+        }
+    };
+
+    // Load settings into cache
+    async function loadSettings() {
+        try {
+            const result = await browser.storage.local.get(['userSettings']);
+            if (result.userSettings) {
+                settingsCache = { ...settingsCache, ...result.userSettings };
+            }
+        } catch (error) {
+            console.warn('Failed to load settings:', error);
+        }
+    }
+
+    window.StorageUtils = {
+        get: async (key) => {
+            const result = await browser.storage.local.get([key]);
+            return result[key] || null;
+        },
+        set: async (key, value) => {
+            await browser.storage.local.set({[key]: value});
+        },
+        remove: async (key) => {
+            await browser.storage.local.remove([key]);
+        },
+        isDomainWhitelisted: (domain = null) => {
+            const targetDomain = domain || currentDomain;
+            return whitelistedDomains.some(d => {
+                if (d.startsWith('*.')) {
+                    const baseDomain = d.substring(2);
+                    return targetDomain === baseDomain || targetDomain.endsWith('.' + baseDomain);
+                } else {
+                    return targetDomain === d;
+                }
+            });
+        },
+        getSetting: (key, defaultValue = null) => {
+            return settingsCache[key] !== undefined ? settingsCache[key] : defaultValue;
+        },
+        isCategoryEnabled: (category) => {
+            const enabledCategories = settingsCache.enabledCategories || {};
+            return enabledCategories[category] !== false; // Default to enabled
+        }
+    };
+    
+    window.FerretWatchDebug = {
+        version: '2.1.0',
+        testPatterns: () => {
+            console.log('🧪 Available patterns:', window.SECURITY_PATTERNS);
+        },
+        scanCurrentPage: async () => {
+            console.log('🧪 Manual page scan...');
+            const findings = await runScan();
+            console.log(`🧪 Manual scan results: ${findings.length} findings`, findings);
+            return findings;
+        },
+        showPatterns: () => {
+            console.log('🧪 Available patterns:', window.SECURITY_PATTERNS);
+        },
+        checkDependencies: () => {
+            return {
+                ProgressiveScanner: !!window.ProgressiveScanner,
+                SECURITY_PATTERNS: !!window.SECURITY_PATTERNS,
+                StorageUtils: !!window.StorageUtils,
+                scanner: !!window.scanner
+            };
+        },
+        getLastScanResults: () => {
+            return lastScanResults;
+        }
+    };
+    
+    // Expose scanner instance and results for fallback access
+    window.scanner = scanner;
+    window.lastScanResults = lastScanResults;
+    
+    console.log('🧪 Debug functions available: FerretWatchDebug.testPatterns(), FerretWatchDebug.scanCurrentPage()');
 })();

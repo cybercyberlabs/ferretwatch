@@ -370,11 +370,36 @@ async function exportData(format) {
             const response = await browser.tabs.sendMessage(currentTab.id, { 
                 action: 'getCurrentFindings' 
             });
-            if (response && response.findings) {
+            if (response && response.success && response.findings) {
                 findings = response.findings;
             }
         } catch (error) {
-            console.log('📡 Could not get findings from content script');
+            console.log('Could not get findings from content script, trying fallback...');
+            
+            // Fallback: try to get findings via script injection
+            try {
+                const results = await browser.tabs.executeScript(currentTab.id, {
+                    code: `
+                        (function() {
+                            // Try to get from global debug object
+                            if (window.FerretWatchDebug && window.FerretWatchDebug.getLastScanResults) {
+                                return window.FerretWatchDebug.getLastScanResults();
+                            }
+                            // Try to get from lastScanResults variable if exposed
+                            if (typeof window.lastScanResults !== 'undefined' && Array.isArray(window.lastScanResults)) {
+                                return window.lastScanResults;
+                            }
+                            return [];
+                        })();
+                    `
+                });
+                
+                if (results && results[0] && Array.isArray(results[0])) {
+                    findings = results[0];
+                }
+            } catch (fallbackError) {
+                console.log('Fallback export method also failed');
+            }
         }
         
         // Create export data
@@ -386,17 +411,17 @@ async function exportData(format) {
             title: currentTab.title,
             findings: findings.map(f => ({
                 type: f.type || 'Unknown',
-                risk: f.risk || 'unknown',
+                risk: f.riskLevel || f.risk || 'unknown',  // Use riskLevel first, fall back to risk
                 value: f.value || 'Unknown',
                 context: f.context || '',
                 position: f.position || 0
             })),
             summary: {
                 total: findings.length,
-                critical: findings.filter(f => f.risk === 'critical').length,
-                high: findings.filter(f => f.risk === 'high').length,
-                medium: findings.filter(f => f.risk === 'medium').length,
-                low: findings.filter(f => f.risk === 'low').length
+                critical: findings.filter(f => (f.riskLevel || f.risk) === 'critical').length,
+                high: findings.filter(f => (f.riskLevel || f.risk) === 'high').length,
+                medium: findings.filter(f => (f.riskLevel || f.risk) === 'medium').length,
+                low: findings.filter(f => (f.riskLevel || f.risk) === 'low').length
             }
         };
         

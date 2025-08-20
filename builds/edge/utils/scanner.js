@@ -35,12 +35,6 @@ class ProgressiveScanner {
         this.abortController = new AbortController();
         
         try {
-            // Check if domain is whitelisted
-            if (this.isDomainWhitelisted()) {
-                console.log('Domain whitelisted, skipping scan');
-                return [];
-            }
-            
             // Phase 1: Quick scan of visible content
             const visibleFindings = await this.scanVisibleContent(content, patterns, options);
             
@@ -138,18 +132,36 @@ class ProgressiveScanner {
                 // Batch process matches to avoid blocking
                 const matches = await this.batchProcessMatches(content, patternConfig);
                 
-                for (const match of matches) {
+                for (const matchObj of matches) {
                     if (findings.length >= maxFindings) {
                         break;
                     }
                     
                     // Validate the match
-                    if (this.isValidSecret(match, patternConfig)) {
+                    if (this.isValidSecret(matchObj.value, patternConfig)) {
+                        // Extract context around the match (50 chars before and after)
+                        const contextStart = Math.max(0, matchObj.index - 50);
+                        const contextEnd = Math.min(content.length, matchObj.index + matchObj.value.length + 50);
+                        let context = content.slice(contextStart, contextEnd);
+                        
+                        // Check for exclude pattern (false positive filter)
+                        if (patternConfig.excludePattern && patternConfig.excludePattern.test(context)) {
+                            continue;
+                        }
+                        
+                        // Clean up context for better readability
+                        context = context
+                            .replace(/<[^>]*>/g, ' ')  // Remove HTML tags
+                            .replace(/\s+/g, ' ')       // Collapse whitespace
+                            .trim();
+                        
                         findings.push({
-                            value: match,
-                            type: patternConfig.description,
-                            riskLevel: patternConfig.riskLevel,
+                            value: matchObj.value,
+                            type: patternConfig.type || patternConfig.description,
+                            riskLevel: patternConfig.risk || patternConfig.riskLevel,
                             category: patternConfig.category || 'unknown',
+                            context: context,
+                            position: matchObj.index,
                             timestamp: Date.now()
                         });
                     }
@@ -172,27 +184,41 @@ class ProgressiveScanner {
      * Process regex matches in batches to avoid blocking
      * @param {string} content - Content to scan
      * @param {object} patternConfig - Pattern configuration
-     * @returns {Promise<Array>} Matches
+     * @returns {Promise<Array>} Matches with position info
      */
     async batchProcessMatches(content, patternConfig) {
         const matches = [];
         const regex = patternConfig.regex;
-        const batchSize = 1000; // Process in chunks
         
-        // Split content into manageable chunks
-        const chunks = this.splitIntoChunks(content, batchSize);
-        
-        for (const chunk of chunks) {
-            const chunkMatches = chunk.match(regex) || [];
-            matches.push(...chunkMatches);
-            
-            // Yield control between chunks
-            if (chunks.length > 10) {
-                await this.yieldControl();
+        try {
+            // Use matchAll to get match objects with position information
+            const matchIterator = content.matchAll(regex);
+            for (const match of matchIterator) {
+                matches.push({
+                    value: match[0],
+                    index: match.index,
+                    fullMatch: match
+                });
+                
+                // Yield control periodically for large numbers of matches
+                if (matches.length % 100 === 0) {
+                    await this.yieldControl();
+                }
             }
+        } catch (error) {
+            console.warn('Regex matching error:', error);
+            // Fallback to simpler matching without position
+            const simpleMatches = content.match(regex) || [];
+            simpleMatches.forEach(match => {
+                matches.push({
+                    value: match,
+                    index: content.indexOf(match),
+                    fullMatch: match
+                });
+            });
         }
         
-        return [...new Set(matches)]; // Remove duplicates
+        return matches;
     }
     
     /**

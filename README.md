@@ -2,7 +2,7 @@
 
 ![CyberCyberLabs Logo](images/browser-extension-logo.svg)
 
-**FerretWatch v2.0.0** - A professional Firefox extension that automatically scans web pages for exposed credentials and secrets, including API keys, tokens, passwords, database connections, and more. When credentials are detected, it shows a prominent notification and logs detailed findings to the browser console.
+**FerretWatch v2.1.0** - A professional Firefox extension that automatically scans web pages for exposed credentials and secrets, including API keys, tokens, passwords, database connections, and more. With enhanced visual notifications, robust export functionality, and false-positive prevention, it provides detailed findings through beautiful UI notifications and comprehensive export options.
 
 ## Author
 
@@ -11,14 +11,31 @@
 🔗 Website: [cybercyberlabs.com](https://cybercyberlabs.com)
 
 ## Features
-- **Real-time Detection**: Scans pages automatically as they load
-- **Comprehensive Pattern Library**: Detects 15+ types of credentials including:
-  - AWS Access Keys and Secret Keys
-  - GitHub Personal Access Tokens
-  - API Keys (Google, Stripe, and generic patterns)
-  - Database Connection Strings (MongoDB, MySQL, PostgreSQL, Redis)
-  - JWT Tokens and Bearer Tokens
-  - SSH Private Keys
+
+### 🎨 Enhanced User Experience (v2.1.0)
+- **Beautiful Visual Notifications**: Modern gradient backgrounds with glassmorphism effects
+- **Risk-Based Badges**: Color-coded indicators (CRITICAL, HIGH, MEDIUM, LOW)
+- **Smooth Animations**: Slide-in/slide-out transitions with hover effects
+- **Contextual Information**: Shows surrounding text where credentials were found
+
+### 📊 Robust Export System
+- **JSON Export**: Complete findings data with metadata and risk summaries
+- **CSV Export**: Spreadsheet-compatible format for analysis
+- **Comprehensive Data**: Timestamp, URL, risk levels, and audit trails
+
+### 🔍 Advanced Detection (50+ Patterns)
+- **AWS Credentials**: Access Keys, Secret Keys, Session Tokens
+- **GitHub Tokens**: Personal Access, Fine-grained, App Tokens  
+- **API Keys**: Google, Stripe, Twilio, SendGrid, Mailgun
+- **Database Connections**: MongoDB, MySQL, PostgreSQL, Redis
+- **Cloud Providers**: Azure Storage Keys, GCP Service Accounts
+- **Authentication**: Bearer Tokens, SSH Private Keys
+- **Messaging Platforms**: Slack Bot/User Tokens, Discord Bot Tokens
+
+### 🛡️ False Positive Prevention
+- **Context-Aware Matching**: Excludes HTML attributes and client-side contexts
+- **Intelligent Filtering**: Distinguishes between public and private API keys
+- **Smart Exclusions**: Avoids CSS filenames, JavaScript variables, and UI elements
   - Slack Bot Tokens
   - Discord Bot Tokens
   - Basic Passwords
