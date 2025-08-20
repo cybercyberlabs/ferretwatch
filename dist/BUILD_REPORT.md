@@ -1,19 +1,19 @@
 # Build Report - Credential Scanner v2.1.0
 
-Generated on: Wed 20 Aug 2025 04:23:24 PM IDT
+Generated on: Wed 20 Aug 2025 04:52:14 PM IDT
 
 ## Package Information
 
 | Browser | Package | Size | Manifest Version |
 |---------|---------|------|------------------|
-| Firefox | ferretwatch-firefox-v2.1.0.zip | 72K | V2 |
-| Chrome | ferretwatch-chrome-v2.1.0.zip | 76K | V3 |
-| Edge | ferretwatch-edge-v2.1.0.zip | 72K | V3 |
+| Firefox | ferretwatch-firefox-v2.1.0.zip | 92K | V2 |
+| Chrome | ferretwatch-chrome-v2.1.0.zip | 92K | V3 |
+| Edge | ferretwatch-edge-v2.1.0.zip | 92K | V3 |
 
 ## Build Configuration
 
 - **Version**: 2.1.0
-- **Build Date**: Wed 20 Aug 2025 04:23:24 PM IDT
+- **Build Date**: Wed 20 Aug 2025 04:52:14 PM IDT
 - **Source Files**: 9 file groups
 - **Target Browsers**: Firefox, Chrome, Edge
 

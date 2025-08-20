@@ -185,8 +185,9 @@ class BackgroundService {
         const badgeColor = count > 0 ? '#dc3545' : '#28a745';
 
         try {
-            await chrome.action.setBadgeText({ text: badgeText, tabId });
-            await chrome.action.setBadgeBackgroundColor({ color: badgeColor, tabId });
+            // Use browserAction for Firefox Manifest V2 compatibility
+            await chrome.browserAction.setBadgeText({ text: badgeText, tabId });
+            await chrome.browserAction.setBadgeBackgroundColor({ color: badgeColor, tabId });
         } catch (error) {
             console.error('Failed to update badge:', error);
         }

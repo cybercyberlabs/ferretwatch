@@ -94,7 +94,7 @@ if (typeof importScripts !== 'undefined') {
         
         const notification = document.createElement('div');
         notification.className = 'cyber-labs-credential-notification';
-        notification.innerHTML = message;
+        notification.textContent = message; // Use textContent instead of innerHTML for security
         
         Object.assign(notification.style, {
             position: 'fixed',
