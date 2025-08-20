@@ -114,9 +114,11 @@ const SECURITY_PATTERNS = {
     // Cloud Provider Keys
     azure: {
         storageKey: {
-            pattern: /[a-zA-Z0-9+\/]{88}==/gi,
+            pattern: /(?:azure[_-]?storage[_-]?key|accountkey|storageaccountkey|AZURE[_-]?STORAGE[_-]?KEY|ACCOUNTKEY|STORAGEACCOUNTKEY)\s*[:=]\s*['"]?([a-zA-Z0-9+\/]{88}==)['"]?/gi,
             description: "Azure Storage Account Key",
-            riskLevel: "high"
+            riskLevel: "high",
+            // Exclude common base64 contexts that aren't Azure keys
+            excludePattern: /(?:origin|feature|expiry|isThirdParty|data-|class=)/i
         },
         clientSecret: {
             pattern: /(?:azure[_-]?client[_-]?secret|AZURE[_-]?CLIENT[_-]?SECRET)\s*[:=]\s*['"]?([a-zA-Z0-9~._-]{34,40})['"]?/gi,
@@ -137,18 +139,11 @@ const SECURITY_PATTERNS = {
             riskLevel: "critical"
         },
         apiKey: {
-            pattern: /AIza[0-9A-Za-z\-_]{35}/gi,
-            description: "Google API Key",
-            riskLevel: "medium"
-        }
-    },
-
-    // JWT Tokens
-    jwt: {
-        token: {
-            pattern: /eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/gi,
-            description: "JWT Token",
-            riskLevel: "medium"
+            pattern: /(?:google[_-]?api[_-]?key|GOOGLE[_-]?API[_-]?KEY|gcp[_-]?key|GCP[_-]?KEY)\s*[:=]\s*['"]?(AIza[0-9A-Za-z\-_]{35})['"]?/gi,
+            description: "Google API Key (Server-side)",
+            riskLevel: "medium",
+            // Exclude client-side HTML contexts where Google API keys are meant to be public
+            excludePattern: /(?:data-api|data-key|<script|<div|<span|maps\.googleapis|client-side|frontend|public)/i
         }
     },
 
@@ -160,9 +155,11 @@ const SECURITY_PATTERNS = {
             riskLevel: "high"
         },
         twilioSid: {
-            pattern: /AC[a-z0-9]{32}/gi,
+            pattern: /(?:twilio[_-]?(?:account[_-]?)?sid|TWILIO[_-]?(?:ACCOUNT[_-]?)?SID)\s*[:=]\s*['"]?(AC[a-z0-9]{32})['"]?/gi,
             description: "Twilio Account SID",
-            riskLevel: "medium"
+            riskLevel: "medium",
+            // Exclude false positives from CSS/JS files
+            excludePattern: /\.(css|js|html|htm)[\s"']/i
         },
         twilioToken: {
             pattern: /(?:twilio[_-]?(?:auth[_-]?)?token|TWILIO[_-]?(?:AUTH[_-]?)?TOKEN)\s*[:=]\s*['"]?([a-f0-9]{32})['"]?/gi,
@@ -246,9 +243,11 @@ const SECURITY_PATTERNS = {
             riskLevel: "high"
         },
         dotenv: {
-            pattern: /(?:SECRET|KEY|TOKEN|PASSWORD)\s*=\s*[^\s\n]+/gi,
+            pattern: /(?:^|\n)\s*[A-Z_][A-Z0-9_]*(?:SECRET|KEY|TOKEN|PASSWORD|API_KEY)\s*=\s*[^\s\n"'<>]{8,}/gim,
             description: "Environment File Secret",
-            riskLevel: "high"
+            riskLevel: "high",
+            // Exclude HTML attributes and web contexts
+            excludePattern: /(?:data-|class=|style=|href=|src=|aria-|role=|<\w+|hotkey=|button|svg|div|span)/i
         }
     }
 };
@@ -260,7 +259,6 @@ const API_KEY_NAMES = [
     'secret[_\\-]?key',
     'auth[_\\-]?token',
     'client[_\\-]?secret',
-    'jwt[_\\-]?token',
     'aws[_\\-]?key',
     'consumer[_\\-]?key',
     'consumer[_\\-]?secret',
