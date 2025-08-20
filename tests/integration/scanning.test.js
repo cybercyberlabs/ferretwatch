@@ -2,9 +2,18 @@
  * Integration tests for the scanning pipeline
  */
 
+let TestFramework, Assert, MockHelpers;
+
 // Load testing framework
 if (typeof require !== 'undefined') {
-    const { TestFramework, Assert, MockHelpers } = require('../framework.js');
+    const framework = require('../framework.js');
+    TestFramework = framework.TestFramework;
+    Assert = framework.Assert;
+    MockHelpers = framework.MockHelpers;
+} else if (typeof window !== 'undefined') {
+    TestFramework = window.TestFramework;
+    Assert = window.Assert;
+    MockHelpers = window.MockHelpers;
 }
 
 const testFramework = new TestFramework();

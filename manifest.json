@@ -24,6 +24,10 @@
         "<all_urls>"
       ],
       "js": [
+        "config/patterns.js",
+        "utils/storage.js",
+        "utils/context.js",
+        "utils/scanner.js",
         "content.js"
       ],
       "run_at": "document_end"

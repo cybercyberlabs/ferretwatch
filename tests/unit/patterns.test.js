@@ -2,10 +2,20 @@
  * Unit tests for security patterns and detection
  */
 
+let TestFramework, Assert, SECURITY_PATTERNS;
+
 // Load testing framework and patterns
 if (typeof require !== 'undefined') {
-    const { TestFramework, Assert } = require('../framework.js');
-    const { SECURITY_PATTERNS } = require('../../config/patterns.js');
+    const framework = require('../framework.js');
+    TestFramework = framework.TestFramework;
+    Assert = framework.Assert;
+
+    const patterns = require('../../config/patterns.js');
+    SECURITY_PATTERNS = patterns.SECURITY_PATTERNS;
+} else if (typeof window !== 'undefined') {
+    TestFramework = window.TestFramework;
+    Assert = window.Assert;
+    SECURITY_PATTERNS = window.SECURITY_PATTERNS;
 }
 
 const testFramework = new TestFramework();
@@ -81,34 +91,47 @@ const testSecrets = {
 };
 
 // Pattern validation tests
-testFramework.test('AWS Access Key patterns should match valid keys', () => {
-    const awsPattern = SECURITY_PATTERNS.aws.accessKeyId.pattern;
-    
-    testSecrets.aws.valid.forEach(secret => {
-        Assert.match(secret, awsPattern, `Should match AWS key: ${secret}`);
-    });
-    
-    testSecrets.aws.invalid.forEach(secret => {
-        Assert.notMatch(secret, awsPattern, `Should not match invalid AWS key: ${secret}`);
-    });
+testFramework.test('AWS Access Key ID pattern should match valid Access Key IDs', () => {
+    const accessKeyPattern = SECURITY_PATTERNS.aws.accessKey.pattern;
+    const validAccessKey = testSecrets.aws.valid[0]; // AKIA...
+    Assert.match(validAccessKey, accessKeyPattern, 'Should match valid AWS Access Key ID');
+
+    const invalidAccessKey = testSecrets.aws.invalid[0]; // AKIATEST
+    Assert.notMatch(invalidAccessKey, accessKeyPattern, 'Should not match invalid AWS Access Key ID');
+});
+
+testFramework.test('AWS Secret Key pattern should match valid Secret Keys', () => {
+    const secretKeyPattern = SECURITY_PATTERNS.aws.secretKey.pattern;
+    // Note: The test data for a secret key is the full key-value pair. The regex is designed to extract the key.
+    const validSecretKeyEvent = `AWS_SECRET_ACCESS_KEY = "${testSecrets.aws.valid[1]}"`; // wJalr...
+    Assert.match(validSecretKeyEvent, secretKeyPattern, 'Should match valid AWS Secret Key');
+
+    const invalidSecretKey = testSecrets.aws.invalid[1]; // YOUR_ACCESS_KEY
+    Assert.notMatch(invalidSecretKey, secretKeyPattern, 'Should not match invalid AWS Secret Key');
 });
 
 testFramework.test('GitHub token patterns should match valid tokens', () => {
     const githubPatterns = [
-        SECURITY_PATTERNS.github.personalAccessToken.pattern,
+        SECURITY_PATTERNS.github.classicToken.pattern,
         SECURITY_PATTERNS.github.fineGrainedToken.pattern,
         SECURITY_PATTERNS.github.appToken.pattern
     ];
     
     // Test each valid GitHub token against all patterns (at least one should match)
     testSecrets.github.valid.forEach(secret => {
-        const matched = githubPatterns.some(pattern => pattern.test(secret));
+        const matched = githubPatterns.some(pattern => {
+            pattern.lastIndex = 0;
+            return pattern.test(secret);
+        });
         Assert.true(matched, `At least one GitHub pattern should match: ${secret}`);
     });
     
     // Test that invalid tokens don't match any pattern
     testSecrets.github.invalid.forEach(secret => {
-        const matched = githubPatterns.some(pattern => pattern.test(secret));
+        const matched = githubPatterns.some(pattern => {
+            pattern.lastIndex = 0;
+            return pattern.test(secret);
+        });
         Assert.false(matched, `No GitHub pattern should match invalid token: ${secret}`);
     });
 });
@@ -120,12 +143,18 @@ testFramework.test('Slack token patterns should match valid tokens', () => {
     ];
     
     testSecrets.slack.valid.forEach(secret => {
-        const matched = slackPatterns.some(pattern => pattern.test(secret));
+        const matched = slackPatterns.some(pattern => {
+            pattern.lastIndex = 0;
+            return pattern.test(secret);
+        });
         Assert.true(matched, `At least one Slack pattern should match: ${secret}`);
     });
     
     testSecrets.slack.invalid.forEach(secret => {
-        const matched = slackPatterns.some(pattern => pattern.test(secret));
+        const matched = slackPatterns.some(pattern => {
+            pattern.lastIndex = 0;
+            return pattern.test(secret);
+        });
         Assert.false(matched, `No Slack pattern should match invalid token: ${secret}`);
     });
 });
@@ -137,12 +166,18 @@ testFramework.test('Certificate patterns should match valid certificates', () =>
     ];
     
     testSecrets.certificates.valid.forEach(secret => {
-        const matched = certPatterns.some(pattern => pattern.test(secret));
+        const matched = certPatterns.some(pattern => {
+            pattern.lastIndex = 0;
+            return pattern.test(secret);
+        });
         Assert.true(matched, `Certificate pattern should match: ${secret.substring(0, 50)}...`);
     });
     
     testSecrets.certificates.invalid.forEach(secret => {
-        const matched = certPatterns.some(pattern => pattern.test(secret));
+        const matched = certPatterns.some(pattern => {
+            pattern.lastIndex = 0;
+            return pattern.test(secret);
+        });
         Assert.false(matched, `No certificate pattern should match invalid cert: ${secret}`);
     });
 });

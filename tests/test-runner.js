@@ -3,11 +3,21 @@
  * Orchestrates unit tests, integration tests, and performance benchmarks
  */
 
+let TestFramework, Assert, MockHelpers, fs, path;
+
 // Load testing framework
 if (typeof require !== 'undefined') {
-    const { TestFramework, Assert, MockHelpers } = require('./framework.js');
-    const fs = require('fs');
-    const path = require('path');
+    const framework = require('./framework.js');
+    TestFramework = framework.TestFramework;
+    Assert = framework.Assert;
+    MockHelpers = framework.MockHelpers;
+
+    fs = require('fs');
+    path = require('path');
+} else if (typeof window !== 'undefined') {
+    TestFramework = window.TestFramework;
+    Assert = window.Assert;
+    MockHelpers = window.MockHelpers;
 }
 
 class TestRunner {
