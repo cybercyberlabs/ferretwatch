@@ -1,0 +1,104 @@
+{
+  "metadata": {
+    "extensionName": "Firefox Credential Scanner",
+    "version": "1.5.0",
+    "testRunDate": "2025-08-20T09:04:02.711Z",
+    "testDuration": 77,
+    "nodeVersion": "v22.17.1",
+    "testFramework": "Custom TestFramework v1.0"
+  },
+  "summary": {
+    "passed": 22,
+    "failed": 0,
+    "total": 26,
+    "executionTime": null,
+    "suiteResults": {
+      "patterns": {
+        "passed": 4,
+        "failed": 0,
+        "skipped": 4,
+        "total": 8
+      },
+      "integration": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0,
+        "total": 9
+      },
+      "performance": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0,
+        "total": 9
+      }
+    }
+  },
+  "suiteDetails": {
+    "unit": null,
+    "integration": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "total": 9
+    },
+    "performance": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "total": 9
+    },
+    "overall": {
+      "passed": 22,
+      "failed": 0,
+      "total": 26,
+      "executionTime": null,
+      "suiteResults": {
+        "patterns": {
+          "passed": 4,
+          "failed": 0,
+          "skipped": 4,
+          "total": 8
+        },
+        "integration": {
+          "passed": 9,
+          "failed": 0,
+          "skipped": 0,
+          "total": 9
+        },
+        "performance": {
+          "passed": 9,
+          "failed": 0,
+          "skipped": 0,
+          "total": 9
+        }
+      }
+    },
+    "patterns": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 4,
+      "total": 8
+    }
+  },
+  "performance": {
+    "averageTestTime": null,
+    "slowestSuite": {
+      "name": "none",
+      "time": 0
+    },
+    "memoryUsage": {
+      "heapUsed": 5,
+      "heapTotal": 7,
+      "external": 1
+    }
+  },
+  "coverage": {
+    "unit": "patterns, entropy, masking",
+    "integration": "scanning pipeline, export functionality",
+    "performance": "benchmarks, memory, concurrency"
+  },
+  "recommendations": [
+    "All tests passing - extension ready for deployment",
+    "Consider adding more edge case tests for robustness"
+  ]
+}

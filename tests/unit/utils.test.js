@@ -2,10 +2,7 @@
  * Unit tests for utility functions
  */
 
-// Load testing framework
-if (typeof require !== 'undefined') {
-    const { TestFramework, Assert, MockHelpers } = require('../framework.js');
-}
+const { TestFramework, Assert, MockHelpers } = require('../framework.js');
 
 const testFramework = new TestFramework();
 

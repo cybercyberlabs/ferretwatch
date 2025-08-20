@@ -1,6 +1,6 @@
 # Build Report - Credential Scanner v2.0.0
 
-Generated on: Wed 20 Aug 2025 10:54:58 AM IDT
+Generated on: Wed Aug 20 08:46:40 UTC 2025
 
 ## Package Information
 
@@ -13,8 +13,8 @@ Generated on: Wed 20 Aug 2025 10:54:58 AM IDT
 ## Build Configuration
 
 - **Version**: 2.0.0
-- **Build Date**: Wed 20 Aug 2025 10:54:58 AM IDT
-- **Source Files**: 9 file groups
+- **Build Date**: Wed Aug 20 08:46:40 UTC 2025
+- **Source Files**: 8 file groups
 - **Target Browsers**: Firefox, Chrome, Edge
 
 ## Browser-Specific Features

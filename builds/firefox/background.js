@@ -46,7 +46,8 @@ class BackgroundService {
             enableHighlighting: false,
             enableSoundAlerts: false,
             scanDelay: 1000,
-            trustedDomains: []
+            trustedDomains: [],
+            enableDynamicScanning: false
         };
     }
 
@@ -92,6 +93,51 @@ class BackgroundService {
                 case 'SHOW_NOTIFICATION':
                     await this.showNotification(message.data);
                     sendResponse({ success: true });
+                    break;
+
+                case 'GET_POPUP_STATE':
+                    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    const domain = tab ? new URL(tab.url).hostname : '';
+                    const isWhitelisted = this.settings.trustedDomains.includes(domain);
+                    sendResponse({
+                        currentDomain: domain,
+                        isWhitelisted: isWhitelisted,
+                        whitelist: this.settings.trustedDomains
+                    });
+                    break;
+
+                case 'ADD_TO_WHITELIST':
+                    const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    if (currentTab) {
+                        const url = new URL(currentTab.url);
+                        const domainToAdd = message.data.includeSubdomains ? `*.${url.hostname}` : url.hostname;
+                        if (!this.settings.trustedDomains.includes(domainToAdd)) {
+                            this.settings.trustedDomains.push(domainToAdd);
+                            await this.updateSettings(this.settings);
+                            chrome.tabs.reload(currentTab.id);
+                        }
+                    }
+                    break;
+
+                case 'REMOVE_FROM_WHITELIST':
+                    this.settings.trustedDomains = this.settings.trustedDomains.filter(d => d !== message.data.domain);
+                    await this.updateSettings(this.settings);
+                    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    if (activeTab) {
+                        chrome.tabs.reload(activeTab.id);
+                    }
+                    break;
+
+                case 'GET_CURRENT_FINDINGS':
+                    const [queriedTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    sendResponse(this.tabResults.get(queriedTab?.id) || []);
+                    break;
+
+                case 'RESCAN_PAGE':
+                    const [tabToRescan] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    if (tabToRescan) {
+                        chrome.tabs.sendMessage(tabToRescan.id, { action: 'rescan' });
+                    }
                     break;
 
                 default:

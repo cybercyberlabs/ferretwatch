@@ -79,37 +79,6 @@ const SECURITY_PATTERNS = {
         }
     },
 
-    // Database Connections
-    database: {
-        connectionString: {
-            pattern: /(?:mongodb(?:\+srv)?:\/\/|mysql:\/\/|postgres:\/\/|postgresql:\/\/|redis:\/\/)[^"%'\s]+/gi,
-            description: "Database Connection String",
-            riskLevel: "critical"
-        }
-    },
-
-    // Authentication Headers
-    auth: {
-        bearerToken: {
-            pattern: /authorization:\s*bearer\s+([A-Za-z0-9\-_\.=\/\+]{10,})/gi,
-            description: "Bearer Token",
-            riskLevel: "high"
-        },
-        basicAuth: {
-            pattern: /authorization:\s*basic\s+([A-Za-z0-9\+\/=]{10,})/gi,
-            description: "Basic Authentication Token",
-            riskLevel: "high"
-        }
-    },
-
-    // SSH Keys
-    ssh: {
-        privateKey: {
-            pattern: /-----BEGIN\s+(?:RSA\s+|DSA\s+|EC\s+|OPENSSH\s+)?PRIVATE\s+KEY-----[\s\S]*?-----END\s+(?:RSA\s+|DSA\s+|EC\s+|OPENSSH\s+)?PRIVATE\s+KEY-----/gi,
-            description: "SSH Private Key",
-            riskLevel: "critical"
-        }
-    },
 
     // Cloud Provider Keys
     azure: {
@@ -191,7 +160,7 @@ const SECURITY_PATTERNS = {
     },
     
     // Certificates and Private Keys
-    certificates: {
+    keys_and_certificates: {
         privateKey: {
             pattern: /-----BEGIN (?:RSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA )?PRIVATE KEY-----/gi,
             description: "Private Key",
@@ -211,11 +180,21 @@ const SECURITY_PATTERNS = {
             pattern: /-----BEGIN PGP PRIVATE KEY BLOCK-----[\s\S]*?-----END PGP PRIVATE KEY BLOCK-----/gi,
             description: "PGP Private Key",
             riskLevel: "critical"
+        },
+        sshPrivateKey: {
+            pattern: /-----BEGIN\s+(?:RSA\s+|DSA\s+|EC\s+|OPENSSH\s+)?PRIVATE\s+KEY-----[\s\S]*?-----END\s+(?:RSA\s+|DSA\s+|EC\s+|OPENSSH\s+)?PRIVATE\s+KEY-----/gi,
+            description: "SSH Private Key",
+            riskLevel: "critical"
         }
     },
     
     // Database Connection Strings
     database: {
+        connectionString: {
+            pattern: /(?:mongodb(?:\+srv)?:\/\/|mysql:\/\/|postgres:\/\/|postgresql:\/\/|redis:\/\/)[^"%'\s]+/gi,
+            description: "Database Connection String",
+            riskLevel: "critical"
+        },
         mysql: {
             pattern: /mysql:\/\/[^:\s]+:[^@\s]+@[^\/\s]+\/[^\s]+/gi,
             description: "MySQL Connection String",

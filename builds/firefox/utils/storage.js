@@ -42,6 +42,7 @@ const DEFAULT_SETTINGS = {
     // Advanced settings
     maxFindings: 10,
     enableHighlighting: false,
+    enableDynamicScanning: false, // New setting
     debugMode: false
 };
 

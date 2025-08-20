@@ -13,7 +13,6 @@ VERSION="2.0.0"
 BUILD_DIR="builds"
 DIST_DIR="$(pwd)/dist"
 SOURCE_FILES=(
-    "manifest.json"
     "content.js"
     "background.js"
     "config/"

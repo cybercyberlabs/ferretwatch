@@ -254,11 +254,21 @@ class ProgressiveScanner {
     }
     
     isValidSecret(match, patternConfig) {
-        // Use existing validation logic
-        if (typeof window.isValidSecret === 'function') {
-            return window.isValidSecret(match, patternConfig);
+        // Use context-aware filtering
+        if (window.ContextUtils && window.ContextUtils.isSuspiciousContext(match, document.body.innerHTML)) {
+            return false;
         }
-        return true; // Fallback
+
+        // Use false positive patterns
+        if (window.FALSE_POSITIVE_PATTERNS) {
+            for (const fp of window.FALSE_POSITIVE_PATTERNS) {
+                if (fp.test(match)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
     
     combineResults(visible, full) {
