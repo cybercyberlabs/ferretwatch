@@ -1,4 +1,4 @@
-# PR: Fix Console Output Issues & Add Debug Mode
+# PR: Fix Console Output Issues & Add Debug Mode (v2.2.0)
 
 ## 🎯 Problem Solved
 Fixed critical console output issues where:
@@ -64,7 +64,8 @@ Fixed critical console output issues where:
 - **Developers**: Can enable debug mode for detailed analysis
 - **Security Teams**: Clear, non-duplicate findings for investigation
 
-## 🧹 Cleanup
+## 🧹 Cleanup & Version
 - Removed development test files
 - Cleaned up spec documentation
+- **Version bumped to 2.2.0** (minor version for new features)
 - Ready for production deployment

@@ -467,6 +467,64 @@ body.modal-open .modal-overlay {
     line-height: 1.3;
 }
 
+.setting-label {
+    display: flex;
+    align-items: flex-start;
+    cursor: pointer;
+    width: 100%;
+}
+
+.setting-checkbox {
+    display: none;
+}
+
+.setting-checkbox + .setting-text::before {
+    content: '';
+    width: 18px;
+    height: 18px;
+    border: 2px solid #ddd;
+    border-radius: 4px;
+    margin-right: 12px;
+    flex-shrink: 0;
+    position: relative;
+    transition: all 0.2s ease;
+    margin-top: 2px;
+    display: inline-block;
+    vertical-align: top;
+}
+
+.setting-checkbox:checked + .setting-text::before {
+    background: #667eea;
+    border-color: #667eea;
+}
+
+.setting-checkbox:checked + .setting-text::after {
+    content: '✓';
+    position: absolute;
+    color: white;
+    font-size: 12px;
+    margin-left: -15px;
+    margin-top: 0px;
+}
+
+.setting-text {
+    display: block;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 2px;
+    font-size: 14px;
+    position: relative;
+}
+
+.setting-description {
+    display: block;
+    color: #666;
+    font-size: 12px;
+    line-height: 1.3;
+    margin-top: 5px;
+    margin-left: 30px;
+}
+
 .session-info {
     display: flex;
     justify-content: space-between;
@@ -610,4 +668,388 @@ body.modal-open .modal-overlay {
 
 .btn-cancel:hover {
     background: #545b62;
+}
+/* Findings Display Styles */
+.findings-section {
+    margin: 16px 0;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: white;
+    overflow: hidden;
+}
+
+.findings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.findings-header h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+}
+
+.findings-count {
+    background: #007bff;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.findings-filters {
+    display: flex;
+    gap: 4px;
+    padding: 8px 16px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.filter-btn {
+    padding: 4px 8px;
+    font-size: 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 12px;
+    background: white;
+    color: #6c757d;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+}
+
+.filter-btn:hover {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.filter-btn.active {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.filter-btn.active:hover {
+    background: #0056b3;
+    border-color: #0056b3;
+}
+
+.findings-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.finding-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s ease;
+}
+
+.finding-item:last-child {
+    border-bottom: none;
+}
+
+.finding-item:hover {
+    background: #f8f9fa;
+}
+
+.finding-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 6px;
+}
+
+.finding-type {
+    font-weight: 500;
+    font-size: 13px;
+    color: #333;
+    flex: 1;
+    margin-right: 8px;
+}
+
+.finding-risk {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.finding-risk.critical {
+    background: #ff4757;
+    color: white;
+}
+
+.finding-risk.high {
+    background: #ff6b35;
+    color: white;
+}
+
+.finding-risk.medium {
+    background: #ffa502;
+    color: white;
+}
+
+.finding-risk.low {
+    background: #26de81;
+    color: white;
+}
+
+.finding-value {
+    font-family: monospace;
+    font-size: 11px;
+    color: #666;
+    background: #f8f9fa;
+    padding: 4px 6px;
+    border-radius: 3px;
+    margin: 4px 0;
+    word-break: break-all;
+    border-left: 3px solid #ddd;
+}
+
+.finding-bucket-info {
+    margin-top: 8px;
+    padding: 8px;
+    background: #e8f4fd;
+    border-radius: 4px;
+    border-left: 3px solid #007bff;
+}
+
+.bucket-detail {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    margin: 2px 0;
+}
+
+.bucket-detail-label {
+    color: #666;
+    font-weight: 500;
+}
+
+.bucket-detail-value {
+    color: #333;
+    font-family: monospace;
+}
+
+.bucket-accessible {
+    color: #e74c3c;
+    font-weight: 600;
+}
+
+.bucket-denied {
+    color: #27ae60;
+    font-weight: 600;
+}
+
+.bucket-unknown {
+    color: #f39c12;
+    font-weight: 600;
+}
+
+.finding-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 6px;
+}
+
+.finding-action-btn {
+    padding: 4px 8px;
+    font-size: 10px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: #6c757d;
+    color: white;
+}
+
+.finding-action-btn:hover {
+    background: #545b62;
+    transform: translateY(-1px);
+}
+
+.finding-action-btn.copy {
+    background: #17a2b8;
+}
+
+.finding-action-btn.copy:hover {
+    background: #138496;
+}
+
+.no-findings {
+    padding: 24px;
+    text-align: center;
+    color: #666;
+    font-style: italic;
+}
+
+.no-findings-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+    opacity: 0.5;
+}
+
+/* Section Headers for Findings */
+.findings-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    background: #e9ecef;
+    border-bottom: 1px solid #dee2e6;
+    margin: 0;
+}
+
+.findings-section-header:first-child {
+    margin-top: 0;
+}
+
+.section-title {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: #495057;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.section-count {
+    background: #6c757d;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+/* Enhanced Bucket Finding Styles */
+.finding-item[data-category="cloudStorage"] {
+    border-left: 4px solid #007bff;
+}
+
+.finding-item[data-category="cloudStorage"] .finding-type {
+    color: #007bff;
+}
+
+.finding-bucket-info {
+    margin-top: 8px;
+    padding: 10px;
+    background: linear-gradient(135deg, #e8f4fd 0%, #f0f8ff 100%);
+    border-radius: 6px;
+    border: 1px solid #b8daff;
+}
+
+.bucket-detail {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    margin: 3px 0;
+    padding: 2px 0;
+}
+
+.bucket-detail-label {
+    color: #495057;
+    font-weight: 600;
+    min-width: 60px;
+}
+
+.bucket-detail-value {
+    color: #212529;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    text-align: right;
+    flex: 1;
+    margin-left: 8px;
+}
+
+.bucket-accessible {
+    color: #dc3545 !important;
+    font-weight: 700;
+    background: rgba(220, 53, 69, 0.1);
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.bucket-denied {
+    color: #28a745 !important;
+    font-weight: 600;
+    background: rgba(40, 167, 69, 0.1);
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.bucket-unknown {
+    color: #ffc107 !important;
+    font-weight: 600;
+    background: rgba(255, 193, 7, 0.1);
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+/* Provider-specific styling */
+.finding-bucket-info[data-provider="aws"] {
+    border-left-color: #ff9900;
+}
+
+.finding-bucket-info[data-provider="gcp"] {
+    border-left-color: #4285f4;
+}
+
+.finding-bucket-info[data-provider="azure"] {
+    border-left-color: #0078d4;
+}
+
+.finding-bucket-info[data-provider="digitalocean"] {
+    border-left-color: #0080ff;
+}
+
+.finding-bucket-info[data-provider="alibaba"] {
+    border-left-color: #ff6a00;
+}
+
+/* Enhanced Action Buttons for Buckets */
+.finding-actions .finding-action-btn {
+    font-size: 9px;
+    padding: 3px 6px;
+    margin-right: 4px;
+}
+
+.finding-action-btn.test-url {
+    background: #007bff;
+}
+
+.finding-action-btn.test-url:hover {
+    background: #0056b3;
+}
+
+.finding-action-btn.dismiss {
+    background: #dc3545;
+}
+
+.finding-action-btn.dismiss:hover {
+    background: #c82333;
+}
+
+/* Responsive adjustments for smaller popup */
+@media (max-width: 450px) {
+    .bucket-detail {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+    }
+    
+    .bucket-detail-value {
+        text-align: left;
+        margin-left: 0;
+        font-size: 10px;
+    }
 }

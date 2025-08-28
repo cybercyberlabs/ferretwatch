@@ -33,6 +33,9 @@ async function initializePopup() {
         // Check whitelist status
         await updateWhitelistStatus();
         
+        // Load and display current findings
+        await loadCurrentFindings();
+        
         // Update status
         updateStatus('active', 'Scanner ready');
         
@@ -106,6 +109,14 @@ function setupButtonHandlers() {
         };
     }
     
+    // Filter buttons
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    filterButtons.forEach(btn => {
+        btn.onclick = function() {
+            handleFindingsFilter(this.dataset.filter);
+        };
+    });
+    
     // Manage Whitelist button
     const manageWhitelist = document.getElementById('manageWhitelist');
     if (manageWhitelist) {
@@ -155,6 +166,11 @@ async function handleRescan() {
                     `Found ${count} credential${count === 1 ? '' : 's'}` : 
                     'No credentials found');
                 console.log(`✅ Rescan complete: ${count} findings`);
+                
+                // Update findings display
+                if (response.findings) {
+                    displayFindings(response.findings);
+                }
             } else {
                 updateStatus('warning', 'Rescan completed - check console');
                 console.log('⚠️ Rescan completed with no clear response');
@@ -231,15 +247,43 @@ function hideSettings() {
     }
 }
 
-function loadSettingsData() {
+async function loadSettingsData() {
     console.log('📖 Loading settings data...');
     
     // Load whitelist info
     updateWhitelistInfo();
+    
+    // Load debug mode setting
+    try {
+        const storage = await browser.storage.local.get(['debugMode']);
+        const debugMode = storage.debugMode || false;
+        const debugToggle = document.getElementById('debugModeToggle');
+        if (debugToggle) {
+            debugToggle.checked = debugMode;
+            console.log('📖 Debug mode loaded:', debugMode);
+        }
+    } catch (error) {
+        console.error('❌ Error loading debug mode setting:', error);
+    }
 }
 
-function saveSettingsData() {
-    console.log('💾 Closing settings...');
+async function saveSettingsData() {
+    console.log('💾 Saving settings...');
+    
+    try {
+        // Save debug mode setting
+        const debugToggle = document.getElementById('debugModeToggle');
+        if (debugToggle) {
+            const debugMode = debugToggle.checked;
+            await browser.storage.local.set({ debugMode });
+            console.log('💾 Debug mode saved:', debugMode);
+        }
+        
+        console.log('✅ Settings saved successfully');
+    } catch (error) {
+        console.error('❌ Error saving settings:', error);
+    }
+    
     hideSettings();
 }
 
@@ -445,7 +489,7 @@ async function exportData(format) {
             domain: url.hostname,
             url: currentTab.url,
             title: currentTab.title,
-            scannerVersion: '2.1.0',
+            scannerVersion: '2.2.0',
             findings: findings.map(f => ({
                 type: f.type || 'Unknown',
                 risk: f.riskLevel || f.risk || 'unknown',
@@ -647,6 +691,178 @@ async function removeDomainFromWhitelist(domain) {
 // Make the remove function globally accessible for inline onclick handlers
 window.removeDomainFromWhitelist = removeDomainFromWhitelist;
 
+// Bucket-specific helper functions
+function createBucketInfoHtml(bucketInfo) {
+    if (!bucketInfo) return '';
+    
+    const accessStatus = bucketInfo.accessible ? 'accessible' : 
+                        bucketInfo.accessible === false ? 'denied' : 'unknown';
+    const accessText = bucketInfo.accessible ? 'Public Access' : 
+                      bucketInfo.accessible === false ? 'Access Denied' : 'Unknown Status';
+    
+    const providerAttr = bucketInfo.provider ? `data-provider="${escapeHtml(bucketInfo.provider)}"` : '';
+    
+    return `
+        <div class="finding-bucket-info" ${providerAttr}>
+            <div class="bucket-detail">
+                <span class="bucket-detail-label">Provider:</span>
+                <span class="bucket-detail-value">${escapeHtml(bucketInfo.provider || 'Unknown').toUpperCase()}</span>
+            </div>
+            <div class="bucket-detail">
+                <span class="bucket-detail-label">Bucket:</span>
+                <span class="bucket-detail-value">${escapeHtml(bucketInfo.bucketName || 'Unknown')}</span>
+            </div>
+            ${bucketInfo.region ? `
+            <div class="bucket-detail">
+                <span class="bucket-detail-label">Region:</span>
+                <span class="bucket-detail-value">${escapeHtml(bucketInfo.region)}</span>
+            </div>
+            ` : ''}
+            <div class="bucket-detail">
+                <span class="bucket-detail-label">Status:</span>
+                <span class="bucket-detail-value bucket-${accessStatus}">${accessText}</span>
+            </div>
+            ${bucketInfo.testResults && bucketInfo.testResults.statusCode ? `
+            <div class="bucket-detail">
+                <span class="bucket-detail-label">Response:</span>
+                <span class="bucket-detail-value">${bucketInfo.testResults.statusCode} ${bucketInfo.testResults.responseType || ''}</span>
+            </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function maskSecret(value) {
+    if (!value || value.length <= 8) return escapeHtml(value);
+    
+    // For bucket URLs, don't mask them as they're not secrets
+    if (value.includes('s3.amazonaws.com') || 
+        value.includes('storage.googleapis.com') || 
+        value.includes('blob.core.windows.net') ||
+        value.startsWith('s3://') || 
+        value.startsWith('gs://')) {
+        return escapeHtml(value);
+    }
+    
+    // For other values, apply masking
+    const start = value.substring(0, 4);
+    const end = value.substring(value.length - 4);
+    const masked = '*'.repeat(Math.min(value.length - 8, 20));
+    return escapeHtml(start + masked + end);
+}
+
+async function copyToClipboard(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        console.log('✅ Copied to clipboard:', text.substring(0, 50) + '...');
+        
+        // Show temporary feedback
+        const originalStatus = document.getElementById('statusText').textContent;
+        updateStatus('active', '📋 Copied to clipboard');
+        setTimeout(() => {
+            updateStatus('active', originalStatus);
+        }, 2000);
+    } catch (error) {
+        console.error('❌ Failed to copy to clipboard:', error);
+        
+        // Fallback: select text for manual copy
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        updateStatus('warning', '📋 Text selected - press Ctrl+C');
+    }
+}
+
+async function dismissBucketFinding(bucketUrl) {
+    try {
+        console.log('❌ Dismissing bucket finding:', bucketUrl);
+        
+        if (!currentTab) {
+            throw new Error('No active tab');
+        }
+        
+        // Send message to content script to dismiss the finding
+        const response = await browser.tabs.sendMessage(currentTab.id, {
+            action: 'dismissFinding',
+            value: bucketUrl,
+            category: 'cloudStorage'
+        });
+        
+        if (response && response.success) {
+            console.log('✅ Bucket finding dismissed');
+            updateStatus('active', 'Finding dismissed');
+            
+            // Refresh the findings display
+            await loadCurrentFindings();
+        } else {
+            console.log('⚠️ Dismiss response unclear');
+            updateStatus('warning', 'Dismiss completed');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error dismissing bucket finding:', error);
+        updateStatus('error', 'Failed to dismiss finding');
+    }
+}
+
+// Make bucket functions globally accessible
+window.copyToClipboard = copyToClipboard;
+window.dismissBucketFinding = dismissBucketFinding;
+
+// Global variable to store current findings for filtering
+let currentFindings = [];
+let currentFilter = 'all';
+
+function handleFindingsFilter(filter) {
+    console.log('🔍 Applying filter:', filter);
+    
+    // Update active filter button
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector(`[data-filter="${filter}"]`).classList.add('active');
+    
+    currentFilter = filter;
+    displayFilteredFindings(currentFindings, filter);
+}
+
+function displayFilteredFindings(findings, filter = 'all') {
+    let filteredFindings = findings;
+    
+    switch (filter) {
+        case 'buckets':
+            filteredFindings = findings.filter(f => f.category === 'cloudStorage');
+            break;
+        case 'other':
+            filteredFindings = findings.filter(f => f.category !== 'cloudStorage');
+            break;
+        case 'high-risk':
+            filteredFindings = findings.filter(f => 
+                f.riskLevel === 'critical' || f.riskLevel === 'high' ||
+                (f.category === 'cloudStorage' && f.bucketInfo && f.bucketInfo.accessible === true)
+            );
+            break;
+        case 'all':
+        default:
+            filteredFindings = findings;
+            break;
+    }
+    
+    console.log(`🔍 Filter "${filter}": ${filteredFindings.length}/${findings.length} findings`);
+    displayFindingsInternal(filteredFindings, findings.length);
+}
+
 async function updateWhitelistStatus() {
     if (!currentTab) return;
     
@@ -705,6 +921,234 @@ function updateStatus(type, message) {
     if (statusText) statusText.textContent = message;
     
     console.log(`📊 Status: ${type} - ${message}`);
+}
+
+async function loadCurrentFindings() {
+    console.log('📋 Loading current findings...');
+    
+    if (!currentTab) {
+        console.log('❌ No current tab available');
+        return;
+    }
+    
+    try {
+        // Try to get findings from content script
+        const response = await browser.tabs.sendMessage(currentTab.id, { 
+            action: 'getCurrentFindings' 
+        });
+        
+        if (response && response.success && Array.isArray(response.findings)) {
+            console.log(`✅ Loaded ${response.findings.length} findings`);
+            displayFindings(response.findings);
+        } else {
+            console.log('⚠️ No findings available or invalid response');
+            displayFindings([]);
+        }
+    } catch (error) {
+        console.log('❌ Failed to load findings:', error.message);
+        displayFindings([]);
+    }
+}
+
+function displayFindings(findings) {
+    console.log('🖼️ Displaying findings:', findings.length);
+    
+    // Store findings globally for filtering
+    currentFindings = findings;
+    
+    const findingsSection = document.getElementById('findingsSection');
+    const findingsFilters = document.getElementById('findingsFilters');
+    
+    if (!findingsSection) {
+        console.error('❌ Findings section not found');
+        return;
+    }
+    
+    if (findings.length === 0) {
+        findingsSection.style.display = 'none';
+        return;
+    }
+    
+    // Show findings section
+    findingsSection.style.display = 'block';
+    
+    // Show/hide filters based on findings diversity
+    const bucketFindings = findings.filter(f => f.category === 'cloudStorage');
+    const otherFindings = findings.filter(f => f.category !== 'cloudStorage');
+    const hasMultipleTypes = bucketFindings.length > 0 && otherFindings.length > 0;
+    
+    if (findingsFilters) {
+        findingsFilters.style.display = hasMultipleTypes || findings.length > 3 ? 'flex' : 'none';
+    }
+    
+    // Display with current filter
+    displayFilteredFindings(findings, currentFilter);
+}
+
+function displayFindingsInternal(findings, totalCount = null) {
+    const findingsCount = document.getElementById('findingsCount');
+    const findingsList = document.getElementById('findingsList');
+    
+    if (!findingsCount || !findingsList) {
+        console.error('❌ Findings display elements not found');
+        return;
+    }
+    
+    // Separate bucket findings from other findings
+    const bucketFindings = findings.filter(f => f.category === 'cloudStorage');
+    const otherFindings = findings.filter(f => f.category !== 'cloudStorage');
+    
+    // Update count with breakdown
+    const bucketCount = bucketFindings.length;
+    const otherCount = otherFindings.length;
+    const displayCount = findings.length;
+    const total = totalCount || displayCount;
+    
+    if (totalCount && displayCount < totalCount) {
+        // Showing filtered results
+        if (bucketCount > 0 && otherCount > 0) {
+            findingsCount.textContent = `${displayCount}/${total} (${bucketCount} buckets, ${otherCount} other)`;
+        } else if (bucketCount > 0) {
+            findingsCount.textContent = `${displayCount}/${total} bucket${displayCount === 1 ? '' : 's'}`;
+        } else {
+            findingsCount.textContent = `${displayCount}/${total}`;
+        }
+    } else {
+        // Showing all results
+        if (bucketCount > 0 && otherCount > 0) {
+            findingsCount.textContent = `${displayCount} (${bucketCount} buckets, ${otherCount} other)`;
+        } else if (bucketCount > 0) {
+            findingsCount.textContent = `${displayCount} bucket${displayCount === 1 ? '' : 's'}`;
+        } else {
+            findingsCount.textContent = displayCount;
+        }
+    }
+    
+    // Clear existing findings
+    findingsList.innerHTML = '';
+    
+    if (findings.length === 0) {
+        findingsList.innerHTML = '<div class="no-findings">No findings match the current filter</div>';
+        return;
+    }
+    
+    // Sort findings: bucket findings first (by risk level), then other findings
+    const sortedFindings = [
+        ...sortFindingsByRisk(bucketFindings),
+        ...sortFindingsByRisk(otherFindings)
+    ];
+    
+    // Add section headers if we have both types and not filtering
+    if (bucketCount > 0 && otherCount > 0 && currentFilter === 'all') {
+        // Add bucket findings section
+        if (bucketCount > 0) {
+            const bucketHeader = createSectionHeader('Cloud Storage Buckets', bucketCount);
+            findingsList.appendChild(bucketHeader);
+            
+            sortFindingsByRisk(bucketFindings).forEach(finding => {
+                const findingElement = createFindingElement(finding);
+                findingsList.appendChild(findingElement);
+            });
+        }
+        
+        // Add other findings section
+        if (otherCount > 0) {
+            const otherHeader = createSectionHeader('Other Security Issues', otherCount);
+            findingsList.appendChild(otherHeader);
+            
+            sortFindingsByRisk(otherFindings).forEach(finding => {
+                const findingElement = createFindingElement(finding);
+                findingsList.appendChild(findingElement);
+            });
+        }
+    } else {
+        // Just display all findings sorted by risk
+        sortedFindings.forEach(finding => {
+            const findingElement = createFindingElement(finding);
+            findingsList.appendChild(findingElement);
+        });
+    }
+}
+
+function groupFindingsByType(findings) {
+    const groups = {};
+    
+    findings.forEach(finding => {
+        const type = finding.type || 'Unknown';
+        if (!groups[type]) {
+            groups[type] = [];
+        }
+        groups[type].push(finding);
+    });
+    
+    return groups;
+}
+
+function sortFindingsByRisk(findings) {
+    const riskOrder = { 'critical': 0, 'high': 1, 'medium': 2, 'low': 3 };
+    
+    return findings.sort((a, b) => {
+        const aRisk = riskOrder[a.riskLevel] !== undefined ? riskOrder[a.riskLevel] : 4;
+        const bRisk = riskOrder[b.riskLevel] !== undefined ? riskOrder[b.riskLevel] : 4;
+        
+        if (aRisk !== bRisk) {
+            return aRisk - bRisk;
+        }
+        
+        // Secondary sort by type
+        const aType = a.type || 'Unknown';
+        const bType = b.type || 'Unknown';
+        return aType.localeCompare(bType);
+    });
+}
+
+function createSectionHeader(title, count) {
+    const header = document.createElement('div');
+    header.className = 'findings-section-header';
+    header.innerHTML = `
+        <h5 class="section-title">${escapeHtml(title)}</h5>
+        <span class="section-count">${count}</span>
+    `;
+    return header;
+}
+
+function createFindingElement(finding) {
+    const div = document.createElement('div');
+    div.className = 'finding-item';
+    
+    const isBucketFinding = finding.category === 'cloudStorage' && finding.bucketInfo;
+    
+    // Add data attributes for styling
+    if (isBucketFinding) {
+        div.setAttribute('data-category', 'cloudStorage');
+        if (finding.bucketInfo.provider) {
+            div.setAttribute('data-provider', finding.bucketInfo.provider);
+        }
+    }
+    
+    div.innerHTML = `
+        <div class="finding-header">
+            <div class="finding-type">${escapeHtml(finding.type || 'Unknown')}</div>
+            <div class="finding-risk ${finding.riskLevel || 'medium'}">${finding.riskLevel || 'medium'}</div>
+        </div>
+        <div class="finding-value">${maskSecret(finding.value || 'Unknown')}</div>
+        ${isBucketFinding ? createBucketInfoHtml(finding.bucketInfo) : ''}
+        <div class="finding-actions">
+            <button class="finding-action-btn copy" onclick="copyToClipboard('${escapeHtml(finding.value || '')}')">
+                📋 Copy
+            </button>
+            ${isBucketFinding && finding.bucketInfo.testUrl ? 
+                `<button class="finding-action-btn test-url" onclick="copyToClipboard('${escapeHtml(finding.bucketInfo.testUrl || '')}')">
+                    🔗 Test URL
+                </button>` : ''}
+            ${isBucketFinding ? 
+                `<button class="finding-action-btn dismiss" onclick="dismissBucketFinding('${escapeHtml(finding.value || '')}')">
+                    ❌ Dismiss
+                </button>` : ''}
+        </div>
+    `;
+    
+    return div;
 }
 
 console.log('🎯 FerretWatch popup script loaded');

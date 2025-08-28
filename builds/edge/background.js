@@ -46,7 +46,20 @@ class BackgroundService {
             enableHighlighting: false,
             enableSoundAlerts: false,
             scanDelay: 1000,
-            trustedDomains: []
+            trustedDomains: [],
+            cloudBucketScanning: {
+                enabled: true,
+                providers: {
+                    aws: true,
+                    gcp: true,
+                    azure: true,
+                    digitalocean: true,
+                    alibaba: true
+                },
+                testTimeout: 5000,
+                maxConcurrentTests: 3,
+                testPublicAccess: true
+            }
         };
     }
 
@@ -133,7 +146,9 @@ class BackgroundService {
     }
 
     async updateSettings(newSettings) {
-        this.settings = { ...this.settings, ...newSettings };
+        // Validate settings before updating
+        const validatedSettings = this.validateSettings(newSettings);
+        this.settings = { ...this.settings, ...validatedSettings };
         
         try {
             await chrome.storage.local.set({ userSettings: this.settings });
@@ -154,6 +169,60 @@ class BackgroundService {
             console.error('Failed to save settings:', error);
             throw error;
         }
+    }
+
+    validateSettings(settings) {
+        const validated = { ...settings };
+        
+        // Validate cloud bucket scanning settings
+        if (validated.cloudBucketScanning) {
+            const bucketSettings = validated.cloudBucketScanning;
+            
+            // Ensure enabled is boolean
+            if (typeof bucketSettings.enabled !== 'boolean') {
+                bucketSettings.enabled = true;
+            }
+            
+            // Validate providers object
+            if (!bucketSettings.providers || typeof bucketSettings.providers !== 'object') {
+                bucketSettings.providers = {
+                    aws: true,
+                    gcp: true,
+                    azure: true,
+                    digitalocean: true,
+                    alibaba: true
+                };
+            } else {
+                // Ensure all provider values are boolean
+                const validProviders = ['aws', 'gcp', 'azure', 'digitalocean', 'alibaba'];
+                validProviders.forEach(provider => {
+                    if (typeof bucketSettings.providers[provider] !== 'boolean') {
+                        bucketSettings.providers[provider] = true;
+                    }
+                });
+            }
+            
+            // Validate timeout (must be positive integer between 1000 and 30000)
+            if (typeof bucketSettings.testTimeout !== 'number' || 
+                bucketSettings.testTimeout < 1000 || 
+                bucketSettings.testTimeout > 30000) {
+                bucketSettings.testTimeout = 5000;
+            }
+            
+            // Validate max concurrent tests (must be positive integer between 1 and 10)
+            if (typeof bucketSettings.maxConcurrentTests !== 'number' || 
+                bucketSettings.maxConcurrentTests < 1 || 
+                bucketSettings.maxConcurrentTests > 10) {
+                bucketSettings.maxConcurrentTests = 3;
+            }
+            
+            // Ensure testPublicAccess is boolean
+            if (typeof bucketSettings.testPublicAccess !== 'boolean') {
+                bucketSettings.testPublicAccess = true;
+            }
+        }
+        
+        return validated;
     }
 
     async showNotification(notificationData) {

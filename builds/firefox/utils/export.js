@@ -28,13 +28,29 @@ class ExportManager {
                 totalFindings: findings.length,
                 riskLevels: this.getRiskLevelCounts(findings),
                 categories: this.getCategoryCounts(findings),
-                highestRisk: this.getHighestRiskLevel(findings)
+                highestRisk: this.getHighestRiskLevel(findings),
+                bucketFindings: {
+                    total: findings.filter(f => f.category === 'cloudStorage').length,
+                    providers: this.getBucketProviderCounts(findings),
+                    accessibility: this.getBucketAccessibilityCounts(findings)
+                }
             },
             findings: findings.map(finding => ({
                 ...finding,
                 value: this.shouldMaskInExport() ? this.maskSecretForExport(finding.value) : finding.value,
                 exportId: this.generateExportId(),
-                detectionTime: finding.timestamp || Date.now()
+                detectionTime: finding.timestamp || Date.now(),
+                // Include bucket metadata if present
+                ...(finding.bucketInfo && {
+                    bucketInfo: {
+                        bucketName: finding.bucketInfo.bucketName,
+                        provider: finding.bucketInfo.provider,
+                        region: finding.bucketInfo.region,
+                        accessible: finding.bucketInfo.accessible,
+                        testUrl: finding.bucketInfo.testUrl,
+                        testResults: finding.bucketInfo.testResults
+                    }
+                })
             })),
             statistics: this.getStatistics()
         };
@@ -56,7 +72,11 @@ class ExportManager {
             'Value',
             'URL',
             'Detection Time',
-            'Export ID'
+            'Export ID',
+            'Bucket Name',
+            'Cloud Provider',
+            'Bucket Accessible',
+            'Test URL'
         ];
         
         const rows = findings.map(finding => [
@@ -66,7 +86,11 @@ class ExportManager {
             `"${this.shouldMaskInExport() ? this.maskSecretForExport(finding.value) : finding.value}"`,
             `"${window.location.href}"`,
             `"${new Date(finding.timestamp || Date.now()).toISOString()}"`,
-            `"${this.generateExportId()}"`
+            `"${this.generateExportId()}"`,
+            `"${finding.bucketInfo?.bucketName || 'N/A'}"`,
+            `"${finding.bucketInfo?.provider || 'N/A'}"`,
+            `"${finding.bucketInfo?.accessible !== undefined ? finding.bucketInfo.accessible : 'N/A'}"`,
+            `"${finding.bucketInfo?.testUrl || 'N/A'}"`
         ]);
         
         const csvContent = [
@@ -216,6 +240,32 @@ class ExportManager {
         const counts = { critical: 0, high: 0, medium: 0, low: 0 };
         findings.forEach(f => {
             counts[f.riskLevel] = (counts[f.riskLevel] || 0) + 1;
+        });
+        return counts;
+    }
+    
+    getBucketProviderCounts(findings) {
+        const counts = {};
+        findings.forEach(f => {
+            if (f.bucketInfo && f.bucketInfo.provider) {
+                counts[f.bucketInfo.provider] = (counts[f.bucketInfo.provider] || 0) + 1;
+            }
+        });
+        return counts;
+    }
+    
+    getBucketAccessibilityCounts(findings) {
+        const counts = { accessible: 0, denied: 0, unknown: 0 };
+        findings.forEach(f => {
+            if (f.bucketInfo) {
+                if (f.bucketInfo.accessible === true) {
+                    counts.accessible++;
+                } else if (f.bucketInfo.accessible === false) {
+                    counts.denied++;
+                } else {
+                    counts.unknown++;
+                }
+            }
         });
         return counts;
     }

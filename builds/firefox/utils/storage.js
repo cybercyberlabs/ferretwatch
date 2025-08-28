@@ -42,7 +42,22 @@ const DEFAULT_SETTINGS = {
     // Advanced settings
     maxFindings: 10,
     enableHighlighting: false,
-    debugMode: false
+    debugMode: false,
+    
+    // Bucket scanning settings
+    cloudBucketScanning: {
+        enabled: true,
+        providers: {
+            aws: true,
+            gcp: true,
+            azure: true,
+            digitalocean: true,
+            alibaba: true
+        },
+        testTimeout: 5000,
+        maxConcurrentTests: 3,
+        testPublicAccess: true
+    }
 };
 
 /**
@@ -159,6 +174,31 @@ function isCategoryEnabled(category) {
     return getSetting(`enabledCategories.${category}`, true);
 }
 
+/**
+ * Checks if bucket scanning is enabled
+ * @returns {boolean} True if bucket scanning is enabled
+ */
+function isBucketScanningEnabled() {
+    return getSetting('cloudBucketScanning.enabled', true);
+}
+
+/**
+ * Checks if a specific cloud provider is enabled for bucket scanning
+ * @param {string} provider - Provider name (aws, gcp, azure, digitalocean, alibaba)
+ * @returns {boolean} True if provider is enabled
+ */
+function isProviderEnabled(provider) {
+    return getSetting(`cloudBucketScanning.providers.${provider}`, true);
+}
+
+/**
+ * Gets bucket scanning settings
+ * @returns {object} Bucket scanning settings
+ */
+function getBucketScanningSettings() {
+    return getSetting('cloudBucketScanning', DEFAULT_SETTINGS.cloudBucketScanning);
+}
+
 // Helper functions for nested object access
 function getNestedValue(obj, path) {
     return path.split('.').reduce((current, key) => current && current[key], obj);
@@ -183,7 +223,10 @@ if (typeof module !== 'undefined' && module.exports) {
         getAllSettings,
         resetSettings,
         isDomainWhitelisted,
-        isCategoryEnabled
+        isCategoryEnabled,
+        isBucketScanningEnabled,
+        isProviderEnabled,
+        getBucketScanningSettings
     };
 }
 
@@ -196,6 +239,9 @@ if (typeof window !== 'undefined') {
         getAllSettings,
         resetSettings,
         isDomainWhitelisted,
-        isCategoryEnabled
+        isCategoryEnabled,
+        isBucketScanningEnabled,
+        isProviderEnabled,
+        getBucketScanningSettings
     };
 }
