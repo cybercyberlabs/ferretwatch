@@ -489,7 +489,7 @@ async function exportData(format) {
             domain: url.hostname,
             url: currentTab.url,
             title: currentTab.title,
-            scannerVersion: '2.1.0',
+            scannerVersion: '2.2.0',
             findings: findings.map(f => ({
                 type: f.type || 'Unknown',
                 risk: f.riskLevel || f.risk || 'unknown',

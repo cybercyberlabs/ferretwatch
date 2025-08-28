@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] - Console Output Improvements & Debug Mode
+## [2.2.0] - Console Output Improvements & Debug Mode
 
 ### Added
 - **Debug Mode Toggle**: Added debug mode setting in extension popup

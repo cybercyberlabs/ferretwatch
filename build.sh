@@ -9,7 +9,7 @@ set -e
 echo "🚀 Starting cross-browser build process..."
 
 # Configuration
-VERSION="2.1.0"
+VERSION="2.2.0"
 BUILD_DIR="builds"
 DIST_DIR="$(pwd)/dist"
 SOURCE_FILES=(

@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "FerretWatch",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Advanced credential and secret scanner for web pages",
   "icons": {
     "16": "icons/icon-16.png",
@@ -35,6 +35,9 @@
         "config/patterns.js",
         "utils/storage.js",
         "utils/context.js",
+        "utils/bucket-parser.js",
+        "utils/bucket-tester.js",
+        "utils/settings.js",
         "utils/scanner.js",
         "content.js"
       ],
@@ -43,7 +46,7 @@
   ],
   "browser_specific_settings": {
     "gecko": {
-      "id": "{e4c98b0d-5c2f-4cb9-87c1-4d89b79efb67}"
+      "id": "{e4c98b0d-5c2f-4cb9-87c1-4d89b79efb68}"
     }
   }
 }

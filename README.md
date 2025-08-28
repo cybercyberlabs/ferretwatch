@@ -2,7 +2,7 @@
 
 ![CyberCyberLabs Logo](images/browser-extension-logo.svg)
 
-**FerretWatch v2.1.0** - A professional Firefox extension that automatically scans web pages for exposed credentials and secrets, including API keys, tokens, passwords, database connections, and more. With enhanced visual notifications, robust export functionality, and false-positive prevention, it provides detailed findings through beautiful UI notifications and comprehensive export options.
+**FerretWatch v2.2.0** - A professional Firefox extension that automatically scans web pages for exposed credentials and secrets, including API keys, tokens, passwords, database connections, and more. With enhanced visual notifications, robust export functionality, debug mode, and false-positive prevention, it provides detailed findings through beautiful UI notifications and comprehensive export options.
 
 ## Author
 
@@ -12,11 +12,17 @@
 
 ## Features
 
-### 🎨 Enhanced User Experience (v2.1.0)
+### 🎨 Enhanced User Experience (v2.2.0)
 - **Beautiful Visual Notifications**: Modern gradient backgrounds with glassmorphism effects
 - **Risk-Based Badges**: Color-coded indicators (CRITICAL, HIGH, MEDIUM, LOW)
 - **Smooth Animations**: Slide-in/slide-out transitions with hover effects
 - **Contextual Information**: Shows surrounding text where credentials were found
+
+### 🪣 Cloud Bucket Security Scanning
+- **Multi-Provider Support**: AWS S3, Google Cloud Storage, Azure Blob Storage, DigitalOcean Spaces, Alibaba Cloud OSS
+- **Public Access Testing**: Automatically tests discovered buckets for public listing capabilities
+- **Risk Assessment**: Identifies misconfigured buckets that could expose sensitive data
+- **Configurable Settings**: Control which providers to scan, timeout values, and concurrency limits
 
 ### 📊 Robust Export System
 - **JSON Export**: Complete findings data with metadata and risk summaries
@@ -29,6 +35,7 @@
 - **API Keys**: Google, Stripe, Twilio, SendGrid, Mailgun
 - **Database Connections**: MongoDB, MySQL, PostgreSQL, Redis
 - **Cloud Providers**: Azure Storage Keys, GCP Service Accounts
+- **Cloud Storage Buckets**: AWS S3, Google Cloud Storage, Azure Blob Storage with public access testing
 - **Authentication**: Bearer Tokens, SSH Private Keys
 - **Messaging Platforms**: Slack Bot/User Tokens, Discord Bot Tokens
 
@@ -58,7 +65,7 @@
 ## Installation
 
 ### From Pre-built Package (Recommended)
-1. Download the latest `ferretwatch-firefox-v2.1.0.zip` from the dist/ folder
+1. Download the latest `ferretwatch-firefox-v2.2.0.zip` from the dist/ folder
 2. Extract the ZIP file to a permanent location on your computer
 3. Open Firefox and navigate to `about:debugging`
 4. Click "This Firefox" on the left sidebar
