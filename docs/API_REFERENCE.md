@@ -14,8 +14,9 @@ This document provides detailed API reference for the Firefox Credential Scanner
 6. [Entropy Analysis API](#entropy-analysis-api)
 7. [Masking Utilities API](#masking-utilities-api)
 8. [Highlighting System API](#highlighting-system-api)
-9. [Browser Extension APIs](#browser-extension-apis)
-10. [Testing Framework API](#testing-framework-api)
+9. [Cloud Bucket Scanning API](#cloud-bucket-scanning-api)
+10. [Browser Extension APIs](#browser-extension-apis)
+11. [Testing Framework API](#testing-framework-api)
 
 ---
 
@@ -647,6 +648,300 @@ const HIGHLIGHT_STYLES = {
         color: '#155724'
     }
 };
+```
+
+---
+
+## Cloud Bucket Scanning API
+
+### BucketParser Class
+
+Parses and normalizes cloud bucket URLs for testing.
+
+```javascript
+class BucketParser {
+    static parseBucketUrl(url, provider)
+    static extractBucketName(url, provider)
+    static extractRegion(url, provider)
+    static generateTestUrls(bucketInfo)
+    static normalizeBucketUrl(url)
+}
+```
+
+#### Methods
+
+##### parseBucketUrl()
+
+```javascript
+/**
+ * Parses a bucket URL and extracts metadata
+ * @param {string} url - Bucket URL to parse
+ * @param {string} provider - Cloud provider (aws, gcp, azure, etc.)
+ * @returns {Object} Parsed bucket information
+ */
+static parseBucketUrl(url, provider)
+```
+
+**Returns:**
+```javascript
+{
+    bucketName: string,     // Extracted bucket name
+    provider: string,       // Cloud provider
+    region: string,         // Bucket region (if detectable)
+    originalUrl: string,    // Original URL
+    testUrls: Array<string>, // URLs to test for accessibility
+    urlType: string         // URL format type (subdomain, path, etc.)
+}
+```
+
+##### generateTestUrls()
+
+```javascript
+/**
+ * Generates test URLs for bucket accessibility testing
+ * @param {Object} bucketInfo - Parsed bucket information
+ * @returns {Array<string>} URLs to test
+ */
+static generateTestUrls(bucketInfo)
+```
+
+### BucketTester Class
+
+Tests cloud buckets for public accessibility.
+
+```javascript
+class BucketTester {
+    constructor(settings = {})
+    async testBucketAccess(bucketInfo)
+    async testMultipleBuckets(bucketList)
+    async testS3Bucket(bucketInfo)
+    async testGCSBucket(bucketInfo)
+    async testAzureBucket(bucketInfo)
+}
+```
+
+#### Constructor
+
+```javascript
+/**
+ * Creates a new BucketTester instance
+ * @param {Object} settings - Tester configuration
+ * @param {number} settings.timeout - Request timeout in milliseconds
+ * @param {number} settings.maxConcurrent - Maximum concurrent tests
+ * @param {boolean} settings.enableTesting - Enable actual HTTP testing
+ */
+new BucketTester({
+    timeout: 5000,
+    maxConcurrent: 3,
+    enableTesting: true
+})
+```
+
+#### Methods
+
+##### testBucketAccess()
+
+```javascript
+/**
+ * Tests a single bucket for public accessibility
+ * @param {Object} bucketInfo - Parsed bucket information
+ * @returns {Promise<Object>} Test results
+ */
+async testBucketAccess(bucketInfo)
+```
+
+**Returns:**
+```javascript
+{
+    accessible: boolean,        // Whether bucket is publicly accessible
+    statusCode: number,         // HTTP response code
+    responseType: string,       // Response content type
+    error: string,             // Error message if test failed
+    testDuration: number,      // Test duration in milliseconds
+    testMethod: string         // Testing method used
+}
+```
+
+##### testMultipleBuckets()
+
+```javascript
+/**
+ * Tests multiple buckets with concurrency control
+ * @param {Array<Object>} bucketList - List of bucket information objects
+ * @returns {Promise<Array<Object>>} Array of test results
+ */
+async testMultipleBuckets(bucketList)
+```
+
+### BucketScanningSettings Class
+
+Manages bucket scanning configuration.
+
+```javascript
+class BucketScanningSettings {
+    constructor()
+    async getBucketScanningSettings()
+    async updateBucketScanningSettings(newSettings)
+    async isBucketScanningEnabled()
+    async isProviderEnabled(provider)
+    async resetToDefaults()
+}
+```
+
+#### Methods
+
+##### getBucketScanningSettings()
+
+```javascript
+/**
+ * Retrieves current bucket scanning settings
+ * @returns {Promise<Object>} Current settings
+ */
+async getBucketScanningSettings()
+```
+
+##### updateBucketScanningSettings()
+
+```javascript
+/**
+ * Updates bucket scanning settings
+ * @param {Object} newSettings - Settings to update
+ * @returns {Promise<void>}
+ */
+async updateBucketScanningSettings(newSettings)
+```
+
+##### isProviderEnabled()
+
+```javascript
+/**
+ * Checks if a specific provider is enabled
+ * @param {string} provider - Provider to check (aws, gcp, azure, etc.)
+ * @returns {Promise<boolean>} True if provider is enabled
+ */
+async isProviderEnabled(provider)
+```
+
+### Bucket Finding Model
+
+```javascript
+{
+    id: string,                 // Unique finding ID
+    type: string,               // "AWS S3 Bucket (Open)" or similar
+    value: string,              // Bucket URL (may be masked)
+    riskLevel: string,          // "high" for open, "low" for secured
+    category: "cloudStorage",   // Always "cloudStorage"
+    url: string,                // Source page URL
+    timestamp: number,          // Detection timestamp
+    context: string,            // Surrounding page context
+    bucketInfo: {
+        bucketName: string,     // Extracted bucket name
+        provider: string,       // Cloud provider
+        region: string,         // Bucket region
+        accessible: boolean,    // Accessibility test result
+        testResults: {
+            statusCode: number,
+            responseType: string,
+            testDuration: number,
+            error: string
+        }
+    }
+}
+```
+
+### Provider Support
+
+| Provider | Identifier | Supported URL Formats |
+|----------|------------|----------------------|
+| AWS S3 | `aws` | `s3://`, `https://*.s3.amazonaws.com`, `https://s3.amazonaws.com/*` |
+| Google Cloud Storage | `gcp` | `gs://`, `https://storage.googleapis.com/*` |
+| Azure Blob Storage | `azure` | `https://*.blob.core.windows.net/*` |
+| DigitalOcean Spaces | `digitalocean` | `https://*.digitaloceanspaces.com/*` |
+| Alibaba Cloud OSS | `alibaba` | `https://*.oss-*.aliyuncs.com/*` |
+
+### Error Handling
+
+#### BucketScanError
+
+```javascript
+class BucketScanError extends Error {
+    constructor(message, code, bucketInfo = {}) {
+        super(message);
+        this.name = 'BucketScanError';
+        this.code = code;
+        this.bucketInfo = bucketInfo;
+    }
+}
+```
+
+**Error codes:**
+- `INVALID_URL`: Bucket URL format is invalid
+- `UNSUPPORTED_PROVIDER`: Cloud provider not supported
+- `NETWORK_ERROR`: Network request failed
+- `TIMEOUT_ERROR`: Request timed out
+- `PARSE_ERROR`: Failed to parse bucket information
+
+### Usage Examples
+
+#### Basic Bucket Scanning
+
+```javascript
+// Initialize components
+const parser = new BucketParser();
+const tester = new BucketTester({ timeout: 5000, maxConcurrent: 3 });
+
+// Parse bucket URL
+const bucketInfo = parser.parseBucketUrl('s3://my-test-bucket', 'aws');
+
+// Test accessibility
+const testResult = await tester.testBucketAccess(bucketInfo);
+
+console.log('Bucket accessible:', testResult.accessible);
+console.log('Status code:', testResult.statusCode);
+```
+
+#### Batch Testing
+
+```javascript
+// Test multiple buckets
+const bucketUrls = [
+    's3://bucket1',
+    'https://bucket2.s3.amazonaws.com',
+    'gs://gcs-bucket'
+];
+
+const bucketInfoList = bucketUrls.map(url => {
+    const provider = url.includes('s3') ? 'aws' : 'gcp';
+    return BucketParser.parseBucketUrl(url, provider);
+});
+
+const results = await tester.testMultipleBuckets(bucketInfoList);
+results.forEach((result, index) => {
+    console.log(`Bucket ${index + 1}: ${result.accessible ? 'Open' : 'Secured'}`);
+});
+```
+
+#### Settings Management
+
+```javascript
+// Get current settings
+const settings = new BucketScanningSettings();
+const currentConfig = await settings.getBucketScanningSettings();
+
+// Update settings
+await settings.updateBucketScanningSettings({
+    enabled: true,
+    providers: {
+        aws: true,
+        gcp: true,
+        azure: false
+    },
+    testTimeout: 10000,
+    maxConcurrentTests: 2
+});
+
+// Check if provider is enabled
+const awsEnabled = await settings.isProviderEnabled('aws');
 ```
 
 ---

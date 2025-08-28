@@ -7,7 +7,7 @@ const SECURITY_PATTERNS = {
     // AWS Credentials
     aws: {
         accessKey: {
-            pattern: /AKIA[0-9A-Z]{16}/gi,
+            pattern: /(?:^|[^A-Za-z0-9])(AKIA[0-9A-Z]{16})(?![A-Za-z0-9])/gi,
             description: "AWS Access Key ID",
             riskLevel: "high"
         },
@@ -248,6 +248,165 @@ const SECURITY_PATTERNS = {
             riskLevel: "high",
             // Exclude HTML attributes and web contexts
             excludePattern: /(?:data-|class=|style=|href=|src=|aria-|role=|<\w+|hotkey=|button|svg|div|span)/i
+        }
+    },
+
+    // Cloud Storage Buckets - Optimized patterns for better performance
+    cloudStorage: {
+        // AWS S3 Buckets - Optimized with anchored patterns and reduced backtracking
+        s3Protocol: {
+            pattern: /s3:\/\/[a-z0-9](?:[a-z0-9\-\.]{0,61}[a-z0-9])?(?:\/[^\s"'<>]*)?/gi,
+            description: "AWS S3 Bucket (s3:// protocol)",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "aws",
+            category: "cloudStorage",
+            optimized: true
+        },
+        s3VirtualHosted: {
+            pattern: /https?:\/\/[a-z0-9](?:[a-z0-9\-\.]{0,61}[a-z0-9])?\.s3(?:[\w\-]*)?\.amazonaws\.com(?:\/[^\s"'<>]*)?/gi,
+            description: "AWS S3 Bucket (virtual-hosted style)",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "aws",
+            category: "cloudStorage",
+            optimized: true
+        },
+        s3PathStyle: {
+            pattern: /https?:\/\/s3(?:[\w\-]*)?\.amazonaws\.com\/[a-z0-9](?:[a-z0-9\-\.]{0,61}[a-z0-9])?(?:\/[^\s"'<>]*)?/gi,
+            description: "AWS S3 Bucket (path style)",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "aws",
+            category: "cloudStorage",
+            optimized: true
+        },
+        s3Website: {
+            pattern: /https?:\/\/[a-z0-9](?:[a-z0-9\-\.]{0,61}[a-z0-9])?\.s3-website(?:-[a-z0-9\-]+)?\.amazonaws\.com(?:\/[^\s"'<>]*)?/gi,
+            description: "AWS S3 Static Website",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "aws",
+            category: "cloudStorage",
+            optimized: true
+        },
+
+        // Google Cloud Storage - Optimized patterns
+        gcsProtocol: {
+            pattern: /gs:\/\/[a-z0-9](?:[a-z0-9\-_\.]{0,61}[a-z0-9])?(?:\/[^\s"'<>]*)?/gi,
+            description: "Google Cloud Storage Bucket (gs:// protocol)",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "gcp",
+            category: "cloudStorage",
+            optimized: true
+        },
+        gcsApi: {
+            pattern: /https?:\/\/storage\.googleapis\.com\/[a-z0-9](?:[a-z0-9\-_\.]{0,61}[a-z0-9])?(?:\/[^\s"'<>]*)?/gi,
+            description: "Google Cloud Storage Bucket (API endpoint)",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "gcp",
+            category: "cloudStorage",
+            optimized: true
+        },
+        gcsDownload: {
+            pattern: /https?:\/\/storage\.cloud\.google\.com\/[a-z0-9](?:[a-z0-9\-_\.]{0,61}[a-z0-9])?(?:\/[^\s"'<>]*)?/gi,
+            description: "Google Cloud Storage Bucket (download endpoint)",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "gcp",
+            category: "cloudStorage",
+            optimized: true
+        },
+
+        // Azure Blob Storage - Optimized patterns
+        azureBlob: {
+            pattern: /https?:\/\/[a-z0-9]{3,24}\.blob\.core\.windows\.net\/[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?(?:\/[^\s"'<>]*)?/gi,
+            description: "Azure Blob Storage Container",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "azure",
+            category: "cloudStorage",
+            optimized: true
+        },
+        azureBlobChina: {
+            pattern: /https?:\/\/[a-z0-9]{3,24}\.blob\.core\.chinacloudapi\.cn\/[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?(?:\/[^\s"'<>]*)?/gi,
+            description: "Azure Blob Storage Container (China)",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "azure",
+            category: "cloudStorage",
+            optimized: true
+        },
+        azureBlobGov: {
+            pattern: /https?:\/\/[a-z0-9]{3,24}\.blob\.core\.usgovcloudapi\.net\/[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?(?:\/[^\s"'<>]*)?/gi,
+            description: "Azure Blob Storage Container (US Gov)",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "azure",
+            category: "cloudStorage",
+            optimized: true
+        },
+
+        // DigitalOcean Spaces - Optimized with specific region list
+        doSpaces: {
+            pattern: /https?:\/\/[a-z0-9](?:[a-z0-9\-\.]{0,61}[a-z0-9])?\.(?:nyc3|ams3|sgp1|sfo2|fra1|blr1|syd1)\.digitaloceanspaces\.com(?:\/[^\s"'<>]*)?/gi,
+            description: "DigitalOcean Spaces Bucket",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "digitalocean",
+            category: "cloudStorage",
+            optimized: true
+        },
+        doSpacesCdn: {
+            pattern: /https?:\/\/[a-z0-9](?:[a-z0-9\-\.]{0,61}[a-z0-9])?\.(?:nyc3|ams3|sgp1|sfo2|fra1|blr1|syd1)\.cdn\.digitaloceanspaces\.com(?:\/[^\s"'<>]*)?/gi,
+            description: "DigitalOcean Spaces CDN",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "digitalocean",
+            category: "cloudStorage",
+            optimized: true
+        },
+
+        // Alibaba Cloud OSS - Optimized patterns
+        alibabaOss: {
+            pattern: /https?:\/\/[a-z0-9](?:[a-z0-9\-\.]{0,61}[a-z0-9])?\.oss-[a-z0-9\-]+\.aliyuncs\.com(?:\/[^\s"'<>]*)?/gi,
+            description: "Alibaba Cloud OSS Bucket",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "alibaba",
+            category: "cloudStorage",
+            optimized: true
+        },
+        alibabaOssInternal: {
+            pattern: /https?:\/\/[a-z0-9](?:[a-z0-9\-\.]{0,61}[a-z0-9])?\.oss-[a-z0-9\-]+-internal\.aliyuncs\.com(?:\/[^\s"'<>]*)?/gi,
+            description: "Alibaba Cloud OSS Bucket (Internal)",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "alibaba",
+            category: "cloudStorage",
+            optimized: true
+        },
+
+        // Additional cloud storage providers - Optimized patterns
+        ibmCos: {
+            pattern: /https?:\/\/[a-z0-9](?:[a-z0-9\-\.]{0,61}[a-z0-9])?\.s3\.(?:us-south|us-east|eu-gb|eu-de|ap-south|ap-northeast)\.cloud-object-storage\.appdomain\.cloud(?:\/[^\s"'<>]*)?/gi,
+            description: "IBM Cloud Object Storage",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "ibm",
+            category: "cloudStorage",
+            optimized: true
+        },
+        oracleOci: {
+            pattern: /https?:\/\/objectstorage\.(?:us-ashburn-1|us-phoenix-1|eu-frankfurt-1|ap-tokyo-1|ap-seoul-1|ap-mumbai-1|ca-toronto-1|sa-saopaulo-1|uk-london-1)\.oraclecloud\.com\/n\/[^\/\s"'<>]+\/b\/[a-z0-9](?:[a-z0-9\-\.]{0,61}[a-z0-9])?(?:\/[^\s"'<>]*)?/gi,
+            description: "Oracle Cloud Infrastructure Object Storage",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "oracle",
+            category: "cloudStorage",
+            optimized: true
+        },
+        wasabiS3: {
+            pattern: /https?:\/\/[a-z0-9](?:[a-z0-9\-\.]{0,61}[a-z0-9])?\.s3\.(?:us-east-1|us-east-2|us-west-1|eu-central-1|ap-northeast-1|ap-northeast-2)\.wasabisys\.com(?:\/[^\s"'<>]*)?/gi,
+            description: "Wasabi Hot Cloud Storage",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "wasabi",
+            category: "cloudStorage",
+            optimized: true
+        },
+        backblazeB2: {
+            pattern: /https?:\/\/f[0-9]{3}\.backblazeb2\.com\/file\/[a-z0-9](?:[a-z0-9\-\.]{0,61}[a-z0-9])?(?:\/[^\s"'<>]*)?/gi,
+            description: "Backblaze B2 Cloud Storage",
+            riskLevel: "low", // Just detection, testing will determine actual risk
+            provider: "backblaze",
+            category: "cloudStorage",
+            optimized: true
         }
     }
 };

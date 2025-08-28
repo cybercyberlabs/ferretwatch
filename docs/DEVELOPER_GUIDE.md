@@ -62,11 +62,13 @@ The extension follows a modular architecture with clear separation of concerns:
    - Modular scanning engine
    - Pattern configuration system
    - Export and storage utilities
+   - **Cloud bucket parsing and testing utilities**
 
 4. **Configuration** (`config/`)
    - Pattern definitions and metadata
    - Risk level classifications
    - Default settings
+   - **Cloud storage bucket patterns**
 
 ## Code Structure
 
@@ -89,7 +91,9 @@ firefox-addon/
 │   ├── export.js              # Export functionality
 │   ├── storage.js             # Storage operations
 │   ├── context.js             # Context filtering
-│   └── highlighting.js        # Page highlighting
+│   ├── highlighting.js        # Page highlighting
+│   ├── bucket-parser.js       # Cloud bucket URL parsing
+│   └── bucket-tester.js       # Cloud bucket accessibility testing
 ├── tests/
 │   ├── framework.js           # Testing framework
 │   ├── test-runner.js         # Test orchestrator
@@ -97,9 +101,13 @@ firefox-addon/
 │   ├── integration/           # Integration tests
 │   └── performance/           # Performance tests
 └── docs/
-    ├── DEVELOPER_GUIDE.md     # This document
-    ├── USER_GUIDE.md          # User documentation
-    └── API_REFERENCE.md       # API documentation
+    ├── DEVELOPER_GUIDE.md                      # This document
+    ├── USER_GUIDE.md                           # User documentation
+    ├── API_REFERENCE.md                        # API documentation
+    ├── BUCKET_SCANNING_SETTINGS.md             # Bucket scanning configuration
+    ├── BUCKET_SCANNING_TROUBLESHOOTING.md      # Troubleshooting guide
+    ├── BUCKET_SCANNING_CONFIGURATION_EXAMPLES.md # Configuration examples
+    └── BUCKET_SCANNING_SECURITY_GUIDE.md       # Security and responsible usage
 ```
 
 ### Code Style Guidelines
@@ -154,8 +162,8 @@ const PATTERNS = {
 | Level | Description | Examples |
 |-------|-------------|----------|
 | **Critical** | Complete account access | AWS keys, private keys, database passwords |
-| **High** | Significant access | GitHub tokens, API keys with write access |
-| **Medium** | Limited access | Read-only API keys, webhooks |
+| **High** | Significant access | GitHub tokens, API keys with write access, open cloud buckets |
+| **Medium** | Limited access | Read-only API keys, webhooks, secured cloud buckets |
 | **Low** | Minimal risk | Public identifiers, non-sensitive tokens |
 
 ## Adding New Patterns
@@ -212,6 +220,88 @@ node tests/unit/patterns.test.js
 # Run full test suite
 node tests/test-runner.js
 ```
+
+## Cloud Bucket Pattern System
+
+### Bucket Pattern Structure
+
+Cloud bucket patterns are defined in `config/patterns.js` under the `cloudStorage` category:
+
+```javascript
+cloudStorage: {
+    name: 'Cloud Storage Buckets',
+    patterns: [
+        {
+            type: 'AWS S3 Bucket',
+            regex: /(?:s3:\/\/|https?:\/\/(?:[\w\-]+\.)?s3(?:[\w\-\.]*)?\.amazonaws\.com\/?)[\w\-\.\/]+/gi,
+            riskLevel: 'medium',
+            category: 'cloudStorage',
+            description: 'AWS S3 bucket URL that may be publicly accessible',
+            provider: 'aws',
+            examples: [
+                's3://my-bucket',
+                'https://my-bucket.s3.amazonaws.com/',
+                'https://s3.amazonaws.com/my-bucket'
+            ]
+        }
+    ]
+}
+```
+
+### Bucket-Specific Properties
+
+- **provider**: Cloud provider identifier (aws, gcp, azure, digitalocean, alibaba)
+- **testEndpoint**: Optional custom endpoint for accessibility testing
+- **regionPattern**: Regex to extract region from URL
+- **bucketNamePattern**: Regex to extract bucket name
+
+### Adding New Cloud Providers
+
+1. **Define Provider Patterns**
+   ```javascript
+   // Example: Adding Backblaze B2
+   backblazeB2: {
+       type: 'Backblaze B2 Bucket',
+       regex: /https?:\/\/[\w\-]+\.backblazeb2\.com\/[\w\-\.\/]+/gi,
+       riskLevel: 'medium',
+       category: 'cloudStorage',
+       provider: 'backblaze',
+       description: 'Backblaze B2 bucket URL'
+   }
+   ```
+
+2. **Update Bucket Parser**
+   ```javascript
+   // In utils/bucket-parser.js
+   static parseBucketUrl(url, provider) {
+       switch (provider) {
+           case 'backblaze':
+               return this.parseBackblazeUrl(url);
+           // ... other providers
+       }
+   }
+   ```
+
+3. **Update Bucket Tester**
+   ```javascript
+   // In utils/bucket-tester.js
+   async testBucketAccess(bucketInfo) {
+       switch (bucketInfo.provider) {
+           case 'backblaze':
+               return await this.testBackblazeBucket(bucketInfo);
+           // ... other providers
+       }
+   }
+   ```
+
+### Bucket Testing Integration
+
+The bucket scanning system integrates with the main scanner through:
+
+1. **Pattern Detection**: Standard pattern matching in scanner.js
+2. **URL Parsing**: Extract bucket details using bucket-parser.js
+3. **Accessibility Testing**: Test public access using bucket-tester.js
+4. **Result Processing**: Generate findings with bucket metadata
 
 ## Development Workflow
 

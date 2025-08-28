@@ -8,13 +8,10 @@ let currentTab = null;
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 FerretWatch popup loading...');
     setTimeout(initializePopup, 100);
 });
 
 async function initializePopup() {
-    console.log('🔧 Initializing popup...');
-    
     try {
         // Get current tab
         const tabs = await browser.tabs.query({ active: true, currentWindow: true });
@@ -36,10 +33,11 @@ async function initializePopup() {
         // Check whitelist status
         await updateWhitelistStatus();
         
+        // Load and display current findings
+        await loadCurrentFindings();
+        
         // Update status
         updateStatus('active', 'Scanner ready');
-        
-        console.log('✅ Popup initialized successfully');
         
     } catch (error) {
         console.error('❌ Popup initialization error:', error);
@@ -48,73 +46,58 @@ async function initializePopup() {
 }
 
 function setupButtonHandlers() {
-    console.log('🔧 Setting up button handlers...');
-    
     // Rescan button
     const rescanBtn = document.getElementById('rescanBtn');
     if (rescanBtn) {
         rescanBtn.onclick = function() {
-            console.log('🔄 Rescan button clicked!');
             handleRescan();
         };
-        console.log('✅ Rescan button ready');
     }
     
     // Settings button
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn) {
         settingsBtn.onclick = function() {
-            console.log('⚙️ Settings button clicked!');
             showSettings();
         };
-        console.log('✅ Settings button ready');
     }
     
     // Whitelist button
     const whitelistBtn = document.getElementById('whitelistBtn');
     if (whitelistBtn) {
         whitelistBtn.onclick = function() {
-            console.log('📝 Whitelist button clicked!');
             handleWhitelist();
         };
-        console.log('✅ Whitelist button ready');
     }
     
     // Export button
     const exportBtn = document.getElementById('exportBtn');
     if (exportBtn) {
         exportBtn.onclick = function() {
-            console.log('📊 Export button clicked!');
             toggleExport();
         };
-        console.log('✅ Export button ready');
     }
     
     // Settings modal close button
     const closeSettings = document.getElementById('closeSettings');
     if (closeSettings) {
         closeSettings.onclick = function() {
-            console.log('❌ Close settings clicked!');
             hideSettings();
         };
-        console.log('✅ Close settings button ready');
     }
     
     // Save settings button (now just close)
     const saveSettings = document.getElementById('saveSettings');
     if (saveSettings) {
         saveSettings.onclick = function() {
-            console.log('💾 Save settings clicked!');
             saveSettingsData();
         };
-        console.log('✅ Save settings button ready');
     }
     
     // Export dropdown options
     const exportJSON = document.getElementById('exportJSON');
     if (exportJSON) {
         exportJSON.onclick = function() {
-            console.log('📄 Export JSON clicked!');
             exportData('json');
         };
     }
@@ -122,27 +105,24 @@ function setupButtonHandlers() {
     const exportCSV = document.getElementById('exportCSV');
     if (exportCSV) {
         exportCSV.onclick = function() {
-            console.log('📊 Export CSV clicked!');
             exportData('csv');
         };
     }
     
-    const exportHistory = document.getElementById('exportHistory');
-    if (exportHistory) {
-        exportHistory.onclick = function() {
-            console.log('📚 Export History clicked!');
-            exportSessionHistory();
+    // Filter buttons
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    filterButtons.forEach(btn => {
+        btn.onclick = function() {
+            handleFindingsFilter(this.dataset.filter);
         };
-    }
+    });
     
     // Manage Whitelist button
     const manageWhitelist = document.getElementById('manageWhitelist');
     if (manageWhitelist) {
         manageWhitelist.onclick = function() {
-            console.log('📋 Manage whitelist clicked!');
             toggleWhitelistView();
         };
-        console.log('✅ Manage whitelist button ready');
     }
     
     // Modal click-outside to close
@@ -154,8 +134,6 @@ function setupButtonHandlers() {
             }
         };
     }
-    
-    console.log('🎉 All button handlers set up successfully!');
 }
 
 // Button handler functions
@@ -188,6 +166,11 @@ async function handleRescan() {
                     `Found ${count} credential${count === 1 ? '' : 's'}` : 
                     'No credentials found');
                 console.log(`✅ Rescan complete: ${count} findings`);
+                
+                // Update findings display
+                if (response.findings) {
+                    displayFindings(response.findings);
+                }
             } else {
                 updateStatus('warning', 'Rescan completed - check console');
                 console.log('⚠️ Rescan completed with no clear response');
@@ -264,15 +247,43 @@ function hideSettings() {
     }
 }
 
-function loadSettingsData() {
+async function loadSettingsData() {
     console.log('📖 Loading settings data...');
     
     // Load whitelist info
     updateWhitelistInfo();
+    
+    // Load debug mode setting
+    try {
+        const storage = await browser.storage.local.get(['debugMode']);
+        const debugMode = storage.debugMode || false;
+        const debugToggle = document.getElementById('debugModeToggle');
+        if (debugToggle) {
+            debugToggle.checked = debugMode;
+            console.log('📖 Debug mode loaded:', debugMode);
+        }
+    } catch (error) {
+        console.error('❌ Error loading debug mode setting:', error);
+    }
 }
 
-function saveSettingsData() {
-    console.log('💾 Closing settings...');
+async function saveSettingsData() {
+    console.log('💾 Saving settings...');
+    
+    try {
+        // Save debug mode setting
+        const debugToggle = document.getElementById('debugModeToggle');
+        if (debugToggle) {
+            const debugMode = debugToggle.checked;
+            await browser.storage.local.set({ debugMode });
+            console.log('💾 Debug mode saved:', debugMode);
+        }
+        
+        console.log('✅ Settings saved successfully');
+    } catch (error) {
+        console.error('❌ Error saving settings:', error);
+    }
+    
     hideSettings();
 }
 
@@ -339,12 +350,10 @@ async function handleWhitelist() {
 }
 
 function toggleExport() {
-    console.log('📊 Toggling export dropdown...');
     const dropdown = document.getElementById('exportOptions');
     if (dropdown) {
         const isVisible = dropdown.style.display === 'block';
         dropdown.style.display = isVisible ? 'none' : 'block';
-        console.log(`📊 Export dropdown ${isVisible ? 'hidden' : 'shown'}`);
     }
 }
 
@@ -364,57 +373,130 @@ async function exportData(format) {
             throw new Error('No active tab');
         }
         
-        // Try to get findings from content script
+        // Try to get findings from content script with multiple approaches
         let findings = [];
+        
+        // Method 1: Try to get via message
         try {
+            console.log('📤 Trying method 1: message to content script');
             const response = await browser.tabs.sendMessage(currentTab.id, { 
                 action: 'getCurrentFindings' 
             });
-            if (response && response.success && response.findings) {
+            if (response && response.success && Array.isArray(response.findings) && response.findings.length > 0) {
                 findings = response.findings;
+                console.log('✅ Method 1 success: Got', findings.length, 'findings');
+            } else {
+                console.log('⚠️ Method 1: No findings or invalid response');
             }
         } catch (error) {
-            console.log('Could not get findings from content script, trying fallback...');
-            
-            // Fallback: try to get findings via script injection
+            console.log('❌ Method 1 failed:', error.message);
+        }
+        
+        // Method 2: Try via script injection if method 1 failed
+        if (findings.length === 0) {
             try {
+                console.log('📤 Trying method 2: script injection');
                 const results = await browser.tabs.executeScript(currentTab.id, {
                     code: `
                         (function() {
-                            // Try to get from global debug object
-                            if (window.FerretWatchDebug && window.FerretWatchDebug.getLastScanResults) {
-                                return window.FerretWatchDebug.getLastScanResults();
-                            }
-                            // Try to get from lastScanResults variable if exposed
-                            if (typeof window.lastScanResults !== 'undefined' && Array.isArray(window.lastScanResults)) {
+                            console.log('🔍 Export: Checking for findings...');
+                            
+                            // Try multiple global variables
+                            if (window.lastScanResults && Array.isArray(window.lastScanResults) && window.lastScanResults.length > 0) {
+                                console.log('✅ Found lastScanResults:', window.lastScanResults.length);
                                 return window.lastScanResults;
+                            }
+                            
+                            if (window.FerretWatchDebug && typeof window.FerretWatchDebug.getLastScanResults === 'function') {
+                                const results = window.FerretWatchDebug.getLastScanResults();
+                                if (Array.isArray(results) && results.length > 0) {
+                                    console.log('✅ Found via debug object:', results.length);
+                                    return results;
+                                }
+                            }
+                            
+                            // Try to trigger a fresh scan
+                            if (window.FerretWatchDebug && typeof window.FerretWatchDebug.scanCurrentPage === 'function') {
+                                console.log('🔍 Triggering fresh scan...');
+                                const scanResults = window.FerretWatchDebug.scanCurrentPage();
+                                if (Array.isArray(scanResults)) {
+                                    console.log('✅ Fresh scan results:', scanResults.length);
+                                    return scanResults;
+                                }
+                            }
+                            
+                            console.log('❌ No findings found via any method');
+                            return [];
+                        })();
+                    `
+                });
+                
+                if (results && results[0] && Array.isArray(results[0]) && results[0].length > 0) {
+                    findings = results[0];
+                    console.log('✅ Method 2 success: Got', findings.length, 'findings');
+                } else {
+                    console.log('⚠️ Method 2: No findings found');
+                }
+            } catch (error) {
+                console.log('❌ Method 2 failed:', error.message);
+            }
+        }
+        
+        // Method 3: Force a scan and try again
+        if (findings.length === 0) {
+            try {
+                console.log('📤 Trying method 3: force scan then export');
+                await browser.tabs.executeScript(currentTab.id, {
+                    code: `
+                        (async function() {
+                            console.log('🔍 Force scan for export...');
+                            if (window.FerretWatchDebug && typeof window.FerretWatchDebug.scanCurrentPage === 'function') {
+                                try {
+                                    const results = await window.FerretWatchDebug.scanCurrentPage();
+                                    window.lastExportFindings = results;
+                                    console.log('✅ Force scan complete:', results.length);
+                                    return results;
+                                } catch (error) {
+                                    console.error('❌ Force scan error:', error);
+                                    return [];
+                                }
                             }
                             return [];
                         })();
                     `
                 });
                 
-                if (results && results[0] && Array.isArray(results[0])) {
+                // Wait a moment then try to get the results
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                const results = await browser.tabs.executeScript(currentTab.id, {
+                    code: `window.lastExportFindings || []`
+                });
+                
+                if (results && results[0] && Array.isArray(results[0]) && results[0].length > 0) {
                     findings = results[0];
+                    console.log('✅ Method 3 success: Got', findings.length, 'findings');
                 }
-            } catch (fallbackError) {
-                console.log('Fallback export method also failed');
+            } catch (error) {
+                console.log('❌ Method 3 failed:', error.message);
             }
         }
         
-        // Create export data
+        // Create export data even if no findings (for debugging)
         const url = new URL(currentTab.url);
         const exportData = {
             timestamp: new Date().toISOString(),
             domain: url.hostname,
             url: currentTab.url,
             title: currentTab.title,
+            scannerVersion: '2.2.0',
             findings: findings.map(f => ({
                 type: f.type || 'Unknown',
-                risk: f.riskLevel || f.risk || 'unknown',  // Use riskLevel first, fall back to risk
+                risk: f.riskLevel || f.risk || 'unknown',
                 value: f.value || 'Unknown',
                 context: f.context || '',
-                position: f.position || 0
+                position: f.position || 0,
+                timestamp: f.timestamp || new Date().toISOString()
             })),
             summary: {
                 total: findings.length,
@@ -422,6 +504,12 @@ async function exportData(format) {
                 high: findings.filter(f => (f.riskLevel || f.risk) === 'high').length,
                 medium: findings.filter(f => (f.riskLevel || f.risk) === 'medium').length,
                 low: findings.filter(f => (f.riskLevel || f.risk) === 'low').length
+            },
+            exportMethod: findings.length > 0 ? 'success' : 'no_findings',
+            debugInfo: {
+                tabId: currentTab.id,
+                userAgent: navigator.userAgent,
+                exportTime: Date.now()
             }
         };
         
@@ -440,8 +528,13 @@ async function exportData(format) {
         // Download file
         downloadFile(content, filename);
         
-        updateStatus('active', `✅ Exported ${findings.length} findings`);
-        console.log('✅ Export completed:', filename);
+        if (findings.length > 0) {
+            updateStatus('active', `✅ Exported ${findings.length} findings`);
+            console.log('✅ Export completed:', filename, 'with', findings.length, 'findings');
+        } else {
+            updateStatus('warning', `⚠️ Exported empty dataset - scan page first`);
+            console.log('⚠️ Export completed with no findings. File created for debugging.');
+        }
         
         setTimeout(() => updateStatus('active', 'Scanner ready'), 3000);
         
@@ -455,18 +548,32 @@ function convertToCSV(data) {
     const headers = ['Domain', 'URL', 'Type', 'Risk', 'Value', 'Context', 'Timestamp'];
     const rows = [headers.join(',')];
     
-    data.findings.forEach(finding => {
+    if (data.findings && data.findings.length > 0) {
+        data.findings.forEach(finding => {
+            const row = [
+                `"${data.domain || ''}"`,
+                `"${data.url || ''}"`,
+                `"${finding.type || 'Unknown'}"`,
+                `"${finding.risk || 'unknown'}"`,
+                `"${finding.value || 'Unknown'}"`,
+                `"${(finding.context || '').replace(/"/g, '""')}"`,
+                `"${finding.timestamp || data.timestamp || new Date().toISOString()}"`
+            ];
+            rows.push(row.join(','));
+        });
+    } else {
+        // Add a row indicating no findings
         const row = [
-            `"${data.domain}"`,
-            `"${data.url}"`,
-            `"${finding.type}"`,
-            `"${finding.risk}"`,
-            `"${finding.value}"`,
-            `"${finding.context.replace(/"/g, '""')}"`,
-            `"${data.timestamp}"`
+            `"${data.domain || ''}"`,
+            `"${data.url || ''}"`,
+            `"No findings"`,
+            `"none"`,
+            `"N/A"`,
+            `"Page scanned but no credentials detected"`,
+            `"${data.timestamp || new Date().toISOString()}"`
         ];
         rows.push(row.join(','));
-    });
+    }
     
     return rows.join('\n');
 }
@@ -487,10 +594,7 @@ function downloadFile(content, filename) {
     setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
-function exportSessionHistory() {
-    console.log('📚 Exporting session history...');
-    alert('Session history export is not implemented yet.');
-}
+
 
 function toggleWhitelistView() {
     console.log('📋 Toggling whitelist view...');
@@ -587,6 +691,178 @@ async function removeDomainFromWhitelist(domain) {
 // Make the remove function globally accessible for inline onclick handlers
 window.removeDomainFromWhitelist = removeDomainFromWhitelist;
 
+// Bucket-specific helper functions
+function createBucketInfoHtml(bucketInfo) {
+    if (!bucketInfo) return '';
+    
+    const accessStatus = bucketInfo.accessible ? 'accessible' : 
+                        bucketInfo.accessible === false ? 'denied' : 'unknown';
+    const accessText = bucketInfo.accessible ? 'Public Access' : 
+                      bucketInfo.accessible === false ? 'Access Denied' : 'Unknown Status';
+    
+    const providerAttr = bucketInfo.provider ? `data-provider="${escapeHtml(bucketInfo.provider)}"` : '';
+    
+    return `
+        <div class="finding-bucket-info" ${providerAttr}>
+            <div class="bucket-detail">
+                <span class="bucket-detail-label">Provider:</span>
+                <span class="bucket-detail-value">${escapeHtml(bucketInfo.provider || 'Unknown').toUpperCase()}</span>
+            </div>
+            <div class="bucket-detail">
+                <span class="bucket-detail-label">Bucket:</span>
+                <span class="bucket-detail-value">${escapeHtml(bucketInfo.bucketName || 'Unknown')}</span>
+            </div>
+            ${bucketInfo.region ? `
+            <div class="bucket-detail">
+                <span class="bucket-detail-label">Region:</span>
+                <span class="bucket-detail-value">${escapeHtml(bucketInfo.region)}</span>
+            </div>
+            ` : ''}
+            <div class="bucket-detail">
+                <span class="bucket-detail-label">Status:</span>
+                <span class="bucket-detail-value bucket-${accessStatus}">${accessText}</span>
+            </div>
+            ${bucketInfo.testResults && bucketInfo.testResults.statusCode ? `
+            <div class="bucket-detail">
+                <span class="bucket-detail-label">Response:</span>
+                <span class="bucket-detail-value">${bucketInfo.testResults.statusCode} ${bucketInfo.testResults.responseType || ''}</span>
+            </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function maskSecret(value) {
+    if (!value || value.length <= 8) return escapeHtml(value);
+    
+    // For bucket URLs, don't mask them as they're not secrets
+    if (value.includes('s3.amazonaws.com') || 
+        value.includes('storage.googleapis.com') || 
+        value.includes('blob.core.windows.net') ||
+        value.startsWith('s3://') || 
+        value.startsWith('gs://')) {
+        return escapeHtml(value);
+    }
+    
+    // For other values, apply masking
+    const start = value.substring(0, 4);
+    const end = value.substring(value.length - 4);
+    const masked = '*'.repeat(Math.min(value.length - 8, 20));
+    return escapeHtml(start + masked + end);
+}
+
+async function copyToClipboard(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        console.log('✅ Copied to clipboard:', text.substring(0, 50) + '...');
+        
+        // Show temporary feedback
+        const originalStatus = document.getElementById('statusText').textContent;
+        updateStatus('active', '📋 Copied to clipboard');
+        setTimeout(() => {
+            updateStatus('active', originalStatus);
+        }, 2000);
+    } catch (error) {
+        console.error('❌ Failed to copy to clipboard:', error);
+        
+        // Fallback: select text for manual copy
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        updateStatus('warning', '📋 Text selected - press Ctrl+C');
+    }
+}
+
+async function dismissBucketFinding(bucketUrl) {
+    try {
+        console.log('❌ Dismissing bucket finding:', bucketUrl);
+        
+        if (!currentTab) {
+            throw new Error('No active tab');
+        }
+        
+        // Send message to content script to dismiss the finding
+        const response = await browser.tabs.sendMessage(currentTab.id, {
+            action: 'dismissFinding',
+            value: bucketUrl,
+            category: 'cloudStorage'
+        });
+        
+        if (response && response.success) {
+            console.log('✅ Bucket finding dismissed');
+            updateStatus('active', 'Finding dismissed');
+            
+            // Refresh the findings display
+            await loadCurrentFindings();
+        } else {
+            console.log('⚠️ Dismiss response unclear');
+            updateStatus('warning', 'Dismiss completed');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error dismissing bucket finding:', error);
+        updateStatus('error', 'Failed to dismiss finding');
+    }
+}
+
+// Make bucket functions globally accessible
+window.copyToClipboard = copyToClipboard;
+window.dismissBucketFinding = dismissBucketFinding;
+
+// Global variable to store current findings for filtering
+let currentFindings = [];
+let currentFilter = 'all';
+
+function handleFindingsFilter(filter) {
+    console.log('🔍 Applying filter:', filter);
+    
+    // Update active filter button
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector(`[data-filter="${filter}"]`).classList.add('active');
+    
+    currentFilter = filter;
+    displayFilteredFindings(currentFindings, filter);
+}
+
+function displayFilteredFindings(findings, filter = 'all') {
+    let filteredFindings = findings;
+    
+    switch (filter) {
+        case 'buckets':
+            filteredFindings = findings.filter(f => f.category === 'cloudStorage');
+            break;
+        case 'other':
+            filteredFindings = findings.filter(f => f.category !== 'cloudStorage');
+            break;
+        case 'high-risk':
+            filteredFindings = findings.filter(f => 
+                f.riskLevel === 'critical' || f.riskLevel === 'high' ||
+                (f.category === 'cloudStorage' && f.bucketInfo && f.bucketInfo.accessible === true)
+            );
+            break;
+        case 'all':
+        default:
+            filteredFindings = findings;
+            break;
+    }
+    
+    console.log(`🔍 Filter "${filter}": ${filteredFindings.length}/${findings.length} findings`);
+    displayFindingsInternal(filteredFindings, findings.length);
+}
+
 async function updateWhitelistStatus() {
     if (!currentTab) return;
     
@@ -645,6 +921,234 @@ function updateStatus(type, message) {
     if (statusText) statusText.textContent = message;
     
     console.log(`📊 Status: ${type} - ${message}`);
+}
+
+async function loadCurrentFindings() {
+    console.log('📋 Loading current findings...');
+    
+    if (!currentTab) {
+        console.log('❌ No current tab available');
+        return;
+    }
+    
+    try {
+        // Try to get findings from content script
+        const response = await browser.tabs.sendMessage(currentTab.id, { 
+            action: 'getCurrentFindings' 
+        });
+        
+        if (response && response.success && Array.isArray(response.findings)) {
+            console.log(`✅ Loaded ${response.findings.length} findings`);
+            displayFindings(response.findings);
+        } else {
+            console.log('⚠️ No findings available or invalid response');
+            displayFindings([]);
+        }
+    } catch (error) {
+        console.log('❌ Failed to load findings:', error.message);
+        displayFindings([]);
+    }
+}
+
+function displayFindings(findings) {
+    console.log('🖼️ Displaying findings:', findings.length);
+    
+    // Store findings globally for filtering
+    currentFindings = findings;
+    
+    const findingsSection = document.getElementById('findingsSection');
+    const findingsFilters = document.getElementById('findingsFilters');
+    
+    if (!findingsSection) {
+        console.error('❌ Findings section not found');
+        return;
+    }
+    
+    if (findings.length === 0) {
+        findingsSection.style.display = 'none';
+        return;
+    }
+    
+    // Show findings section
+    findingsSection.style.display = 'block';
+    
+    // Show/hide filters based on findings diversity
+    const bucketFindings = findings.filter(f => f.category === 'cloudStorage');
+    const otherFindings = findings.filter(f => f.category !== 'cloudStorage');
+    const hasMultipleTypes = bucketFindings.length > 0 && otherFindings.length > 0;
+    
+    if (findingsFilters) {
+        findingsFilters.style.display = hasMultipleTypes || findings.length > 3 ? 'flex' : 'none';
+    }
+    
+    // Display with current filter
+    displayFilteredFindings(findings, currentFilter);
+}
+
+function displayFindingsInternal(findings, totalCount = null) {
+    const findingsCount = document.getElementById('findingsCount');
+    const findingsList = document.getElementById('findingsList');
+    
+    if (!findingsCount || !findingsList) {
+        console.error('❌ Findings display elements not found');
+        return;
+    }
+    
+    // Separate bucket findings from other findings
+    const bucketFindings = findings.filter(f => f.category === 'cloudStorage');
+    const otherFindings = findings.filter(f => f.category !== 'cloudStorage');
+    
+    // Update count with breakdown
+    const bucketCount = bucketFindings.length;
+    const otherCount = otherFindings.length;
+    const displayCount = findings.length;
+    const total = totalCount || displayCount;
+    
+    if (totalCount && displayCount < totalCount) {
+        // Showing filtered results
+        if (bucketCount > 0 && otherCount > 0) {
+            findingsCount.textContent = `${displayCount}/${total} (${bucketCount} buckets, ${otherCount} other)`;
+        } else if (bucketCount > 0) {
+            findingsCount.textContent = `${displayCount}/${total} bucket${displayCount === 1 ? '' : 's'}`;
+        } else {
+            findingsCount.textContent = `${displayCount}/${total}`;
+        }
+    } else {
+        // Showing all results
+        if (bucketCount > 0 && otherCount > 0) {
+            findingsCount.textContent = `${displayCount} (${bucketCount} buckets, ${otherCount} other)`;
+        } else if (bucketCount > 0) {
+            findingsCount.textContent = `${displayCount} bucket${displayCount === 1 ? '' : 's'}`;
+        } else {
+            findingsCount.textContent = displayCount;
+        }
+    }
+    
+    // Clear existing findings
+    findingsList.innerHTML = '';
+    
+    if (findings.length === 0) {
+        findingsList.innerHTML = '<div class="no-findings">No findings match the current filter</div>';
+        return;
+    }
+    
+    // Sort findings: bucket findings first (by risk level), then other findings
+    const sortedFindings = [
+        ...sortFindingsByRisk(bucketFindings),
+        ...sortFindingsByRisk(otherFindings)
+    ];
+    
+    // Add section headers if we have both types and not filtering
+    if (bucketCount > 0 && otherCount > 0 && currentFilter === 'all') {
+        // Add bucket findings section
+        if (bucketCount > 0) {
+            const bucketHeader = createSectionHeader('Cloud Storage Buckets', bucketCount);
+            findingsList.appendChild(bucketHeader);
+            
+            sortFindingsByRisk(bucketFindings).forEach(finding => {
+                const findingElement = createFindingElement(finding);
+                findingsList.appendChild(findingElement);
+            });
+        }
+        
+        // Add other findings section
+        if (otherCount > 0) {
+            const otherHeader = createSectionHeader('Other Security Issues', otherCount);
+            findingsList.appendChild(otherHeader);
+            
+            sortFindingsByRisk(otherFindings).forEach(finding => {
+                const findingElement = createFindingElement(finding);
+                findingsList.appendChild(findingElement);
+            });
+        }
+    } else {
+        // Just display all findings sorted by risk
+        sortedFindings.forEach(finding => {
+            const findingElement = createFindingElement(finding);
+            findingsList.appendChild(findingElement);
+        });
+    }
+}
+
+function groupFindingsByType(findings) {
+    const groups = {};
+    
+    findings.forEach(finding => {
+        const type = finding.type || 'Unknown';
+        if (!groups[type]) {
+            groups[type] = [];
+        }
+        groups[type].push(finding);
+    });
+    
+    return groups;
+}
+
+function sortFindingsByRisk(findings) {
+    const riskOrder = { 'critical': 0, 'high': 1, 'medium': 2, 'low': 3 };
+    
+    return findings.sort((a, b) => {
+        const aRisk = riskOrder[a.riskLevel] !== undefined ? riskOrder[a.riskLevel] : 4;
+        const bRisk = riskOrder[b.riskLevel] !== undefined ? riskOrder[b.riskLevel] : 4;
+        
+        if (aRisk !== bRisk) {
+            return aRisk - bRisk;
+        }
+        
+        // Secondary sort by type
+        const aType = a.type || 'Unknown';
+        const bType = b.type || 'Unknown';
+        return aType.localeCompare(bType);
+    });
+}
+
+function createSectionHeader(title, count) {
+    const header = document.createElement('div');
+    header.className = 'findings-section-header';
+    header.innerHTML = `
+        <h5 class="section-title">${escapeHtml(title)}</h5>
+        <span class="section-count">${count}</span>
+    `;
+    return header;
+}
+
+function createFindingElement(finding) {
+    const div = document.createElement('div');
+    div.className = 'finding-item';
+    
+    const isBucketFinding = finding.category === 'cloudStorage' && finding.bucketInfo;
+    
+    // Add data attributes for styling
+    if (isBucketFinding) {
+        div.setAttribute('data-category', 'cloudStorage');
+        if (finding.bucketInfo.provider) {
+            div.setAttribute('data-provider', finding.bucketInfo.provider);
+        }
+    }
+    
+    div.innerHTML = `
+        <div class="finding-header">
+            <div class="finding-type">${escapeHtml(finding.type || 'Unknown')}</div>
+            <div class="finding-risk ${finding.riskLevel || 'medium'}">${finding.riskLevel || 'medium'}</div>
+        </div>
+        <div class="finding-value">${maskSecret(finding.value || 'Unknown')}</div>
+        ${isBucketFinding ? createBucketInfoHtml(finding.bucketInfo) : ''}
+        <div class="finding-actions">
+            <button class="finding-action-btn copy" onclick="copyToClipboard('${escapeHtml(finding.value || '')}')">
+                📋 Copy
+            </button>
+            ${isBucketFinding && finding.bucketInfo.testUrl ? 
+                `<button class="finding-action-btn test-url" onclick="copyToClipboard('${escapeHtml(finding.bucketInfo.testUrl || '')}')">
+                    🔗 Test URL
+                </button>` : ''}
+            ${isBucketFinding ? 
+                `<button class="finding-action-btn dismiss" onclick="dismissBucketFinding('${escapeHtml(finding.value || '')}')">
+                    ❌ Dismiss
+                </button>` : ''}
+        </div>
+    `;
+    
+    return div;
 }
 
 console.log('🎯 FerretWatch popup script loaded');

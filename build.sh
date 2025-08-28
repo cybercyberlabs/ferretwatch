@@ -9,7 +9,7 @@ set -e
 echo "🚀 Starting cross-browser build process..."
 
 # Configuration
-VERSION="2.1.0"
+VERSION="2.2.0"
 BUILD_DIR="builds"
 DIST_DIR="$(pwd)/dist"
 SOURCE_FILES=(
@@ -122,8 +122,41 @@ build_chrome() {
     # Copy source files
     copy_source_files "$chrome_dir"
     
-    # Use Chrome manifest (Manifest V3)
-    cp "manifest-chrome.json" "$chrome_dir/manifest.json"
+    # Use Chrome manifest (Manifest V3) - convert from Firefox manifest
+    if [[ -f "$chrome_dir/manifest.json" ]]; then
+        # Transform Firefox manifest to Chrome V3 manifest
+        python3 << 'EOF'
+import json
+import sys
+
+# Read the Firefox manifest
+with open('builds/chrome/manifest.json', 'r') as f:
+    manifest = json.load(f)
+
+# Convert to Manifest V3 for Chrome
+manifest['manifest_version'] = 3
+
+# Replace browser_action with action
+if 'browser_action' in manifest:
+    manifest['action'] = manifest.pop('browser_action')
+
+# Remove Firefox-specific settings
+if 'browser_specific_settings' in manifest:
+    del manifest['browser_specific_settings']
+
+# Update content scripts structure if needed
+# (Current structure should be compatible)
+
+# Add host permissions (required in MV3)
+if 'permissions' in manifest and '<all_urls>' in manifest['permissions']:
+    manifest['host_permissions'] = ['<all_urls>']
+    manifest['permissions'] = [p for p in manifest['permissions'] if p != '<all_urls>']
+
+# Write Chrome manifest
+with open('builds/chrome/manifest.json', 'w') as f:
+    json.dump(manifest, f, indent=2)
+EOF
+    fi
     
     # Create icons
     create_placeholder_icons "$chrome_dir"
@@ -185,7 +218,39 @@ build_edge() {
     
     # Edge uses the same structure as Chrome (Manifest V3)
     copy_source_files "$edge_dir"
-    cp "manifest-chrome.json" "$edge_dir/manifest.json"
+    
+    # Use Edge manifest (Manifest V3) - convert from Firefox manifest  
+    if [[ -f "$edge_dir/manifest.json" ]]; then
+        # Transform Firefox manifest to Edge V3 manifest
+        python3 << 'EOF'
+import json
+import sys
+
+# Read the Firefox manifest
+with open('builds/edge/manifest.json', 'r') as f:
+    manifest = json.load(f)
+
+# Convert to Manifest V3 for Edge
+manifest['manifest_version'] = 3
+
+# Replace browser_action with action
+if 'browser_action' in manifest:
+    manifest['action'] = manifest.pop('browser_action')
+
+# Remove Firefox-specific settings
+if 'browser_specific_settings' in manifest:
+    del manifest['browser_specific_settings']
+
+# Add host permissions (required in MV3)
+if 'permissions' in manifest and '<all_urls>' in manifest['permissions']:
+    manifest['host_permissions'] = ['<all_urls>']
+    manifest['permissions'] = [p for p in manifest['permissions'] if p != '<all_urls>']
+
+# Write Edge manifest
+with open('builds/edge/manifest.json', 'w') as f:
+    json.dump(manifest, f, indent=2)
+EOF
+    fi
     
     # Update name for Edge
     if command -v jq > /dev/null; then

@@ -1,0 +1,89 @@
+{
+  "metadata": {
+    "extensionName": "Firefox Credential Scanner",
+    "version": "1.5.0",
+    "testRunDate": "2025-08-27T13:20:46.837Z",
+    "testDuration": 44,
+    "nodeVersion": "v18.19.1",
+    "testFramework": "Custom TestFramework v1.0"
+  },
+  "summary": {
+    "passed": 0,
+    "failed": 1,
+    "total": 1,
+    "executionTime": 0,
+    "suiteResults": {
+      "patterns": {
+        "passed": 0,
+        "failed": 1,
+        "total": 1,
+        "executionTime": 0,
+        "failures": [
+          {
+            "testName": "Suite Error",
+            "error": "Cannot read properties of undefined (reading 'forEach')"
+          }
+        ]
+      }
+    }
+  },
+  "suiteDetails": {
+    "unit": null,
+    "integration": null,
+    "performance": null,
+    "overall": {
+      "passed": 0,
+      "failed": 1,
+      "total": 1,
+      "executionTime": 0,
+      "suiteResults": {
+        "patterns": {
+          "passed": 0,
+          "failed": 1,
+          "total": 1,
+          "executionTime": 0,
+          "failures": [
+            {
+              "testName": "Suite Error",
+              "error": "Cannot read properties of undefined (reading 'forEach')"
+            }
+          ]
+        }
+      }
+    },
+    "patterns": {
+      "passed": 0,
+      "failed": 1,
+      "total": 1,
+      "executionTime": 0,
+      "failures": [
+        {
+          "testName": "Suite Error",
+          "error": "Cannot read properties of undefined (reading 'forEach')"
+        }
+      ]
+    }
+  },
+  "performance": {
+    "averageTestTime": 0,
+    "slowestSuite": {
+      "name": "none",
+      "time": 0
+    },
+    "memoryUsage": {
+      "heapUsed": 4,
+      "heapTotal": 8,
+      "external": 2
+    }
+  },
+  "coverage": {
+    "unit": "patterns, entropy, masking",
+    "integration": "not run",
+    "performance": "not run"
+  },
+  "recommendations": [
+    "Address 1 failing test(s) before deployment",
+    "Add integration tests for end-to-end workflows",
+    "Add performance benchmarks for production readiness"
+  ]
+}

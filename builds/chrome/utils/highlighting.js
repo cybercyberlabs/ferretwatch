@@ -188,7 +188,16 @@ class HighlightManager {
         this.clearAllHighlights();
         
         findings.forEach(finding => {
-            this.highlightText(finding.value, finding.type, finding.riskLevel);
+            // Determine display type for bucket findings
+            let displayType = finding.type;
+            if (finding.category === 'cloudStorage' && finding.bucketInfo) {
+                const provider = finding.bucketInfo.provider ? finding.bucketInfo.provider.toUpperCase() : 'Cloud';
+                const accessibility = finding.bucketInfo.accessible === true ? 'Public' : 
+                                    finding.bucketInfo.accessible === false ? 'Private' : 'Unknown';
+                displayType = `${provider} Bucket (${accessibility})`;
+            }
+            
+            this.highlightText(finding.value, displayType, finding.riskLevel, finding);
         });
         
         this.updateHighlightControls();
@@ -199,8 +208,9 @@ class HighlightManager {
      * @param {string} text - Text to highlight
      * @param {string} type - Type of secret
      * @param {string} riskLevel - Risk level
+     * @param {object} finding - Complete finding object (optional)
      */
-    highlightText(text, type, riskLevel) {
+    highlightText(text, type, riskLevel, finding = null) {
         const walker = document.createTreeWalker(
             document.body,
             NodeFilter.SHOW_TEXT,
@@ -225,7 +235,7 @@ class HighlightManager {
         }
         
         textNodes.forEach(textNode => {
-            this.highlightInTextNode(textNode, text, type, riskLevel);
+            this.highlightInTextNode(textNode, text, type, riskLevel, finding);
         });
     }
     
@@ -235,8 +245,9 @@ class HighlightManager {
      * @param {string} text - Text to highlight
      * @param {string} type - Type of secret
      * @param {string} riskLevel - Risk level
+     * @param {object} finding - Complete finding object (optional)
      */
-    highlightInTextNode(textNode, text, type, riskLevel) {
+    highlightInTextNode(textNode, text, type, riskLevel, finding = null) {
         const content = textNode.textContent;
         const index = content.indexOf(text);
         
@@ -252,10 +263,24 @@ class HighlightManager {
         highlight.setAttribute('data-type', type);
         highlight.setAttribute('data-risk', riskLevel);
         
-        // Create tooltip
+        // Create tooltip with bucket information if available
         const tooltip = document.createElement('div');
         tooltip.className = 'cyberscan-tooltip';
-        tooltip.textContent = `${type} (${riskLevel.toUpperCase()} risk)`;
+        
+        let tooltipText = `${type} (${riskLevel.toUpperCase()} risk)`;
+        if (finding && finding.bucketInfo) {
+            const bucketInfo = finding.bucketInfo;
+            tooltipText += `\nBucket: ${bucketInfo.bucketName || 'Unknown'}`;
+            if (bucketInfo.provider) {
+                tooltipText += `\nProvider: ${bucketInfo.provider.toUpperCase()}`;
+            }
+            if (bucketInfo.accessible !== undefined) {
+                const status = bucketInfo.accessible ? 'Public Access' : 'Access Denied';
+                tooltipText += `\nStatus: ${status}`;
+            }
+        }
+        
+        tooltip.textContent = tooltipText;
         highlight.appendChild(tooltip);
         
         // Split text node and insert highlight
@@ -284,7 +309,8 @@ class HighlightManager {
             element: highlight,
             type: type,
             riskLevel: riskLevel,
-            text: highlightText
+            text: highlightText,
+            finding: finding
         });
         
         // Add click handler
@@ -303,7 +329,27 @@ class HighlightManager {
         if (!highlight) return;
         
         // Show detailed information
-        const message = `Secret Type: ${highlight.type}\nRisk Level: ${highlight.riskLevel.toUpperCase()}\nValue: ${this.maskSecret(highlight.text)}`;
+        let message = `Secret Type: ${highlight.type}\nRisk Level: ${highlight.riskLevel.toUpperCase()}\nValue: ${this.maskSecret(highlight.text)}`;
+        
+        // Add bucket information if available
+        if (highlight.finding && highlight.finding.bucketInfo) {
+            const bucketInfo = highlight.finding.bucketInfo;
+            message += `\n\nBucket Details:`;
+            message += `\nBucket Name: ${bucketInfo.bucketName || 'Unknown'}`;
+            if (bucketInfo.provider) {
+                message += `\nProvider: ${bucketInfo.provider.toUpperCase()}`;
+            }
+            if (bucketInfo.region) {
+                message += `\nRegion: ${bucketInfo.region}`;
+            }
+            if (bucketInfo.accessible !== undefined) {
+                const status = bucketInfo.accessible ? 'Public Access (HIGH RISK)' : 'Access Denied';
+                message += `\nAccessibility: ${status}`;
+            }
+            if (bucketInfo.testUrl) {
+                message += `\nTest URL: ${bucketInfo.testUrl}`;
+            }
+        }
         
         if (confirm(message + '\n\nCopy to clipboard?')) {
             navigator.clipboard.writeText(highlight.text).catch(err => {
@@ -420,19 +466,43 @@ class HighlightManager {
         if (!stats) return;
         
         const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+        const bucketCounts = { total: 0, accessible: 0, denied: 0, unknown: 0 };
+        
         this.highlights.forEach(highlight => {
             counts[highlight.riskLevel] = (counts[highlight.riskLevel] || 0) + 1;
+            
+            // Count bucket findings
+            if (highlight.finding && highlight.finding.bucketInfo) {
+                bucketCounts.total++;
+                if (highlight.finding.bucketInfo.accessible === true) {
+                    bucketCounts.accessible++;
+                } else if (highlight.finding.bucketInfo.accessible === false) {
+                    bucketCounts.denied++;
+                } else {
+                    bucketCounts.unknown++;
+                }
+            }
         });
         
         const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
         
-        stats.innerHTML = `
+        let statsHtml = `
             Total: ${total} secrets found<br>
             <span style="color: ${this.highlightColors.critical}">Critical: ${counts.critical}</span> | 
             <span style="color: ${this.highlightColors.high}">High: ${counts.high}</span> | 
             <span style="color: ${this.highlightColors.medium}">Medium: ${counts.medium}</span> | 
             <span style="color: ${this.highlightColors.low}">Low: ${counts.low}</span>
         `;
+        
+        // Add bucket statistics if any bucket findings exist
+        if (bucketCounts.total > 0) {
+            statsHtml += `<br><br>Cloud Buckets: ${bucketCounts.total} found<br>`;
+            statsHtml += `<span style="color: ${this.highlightColors.critical}">Public: ${bucketCounts.accessible}</span> | `;
+            statsHtml += `<span style="color: ${this.highlightColors.low}">Private: ${bucketCounts.denied}</span> | `;
+            statsHtml += `<span style="color: ${this.highlightColors.medium}">Unknown: ${bucketCounts.unknown}</span>`;
+        }
+        
+        stats.innerHTML = statsHtml;
     }
     
     /**

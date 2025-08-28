@@ -60,6 +60,7 @@ The Firefox Credential Scanner is a browser extension that automatically detects
 
 #### 🔍 **Automatic Credential Detection**
 - Scans web pages for 60+ types of credentials and API keys
+- **Cloud bucket discovery and security testing** for AWS S3, Google Cloud Storage, Azure Blob Storage, and more
 - Real-time detection as pages load
 - Progressive scanning for large pages
 
@@ -98,6 +99,7 @@ The Firefox Credential Scanner is a browser extension that automatically detects
 | **Databases** | Connection strings (MySQL, PostgreSQL, MongoDB) | Critical |
 | **Certificates** | Private Keys, SSL Certificates, PGP Keys | Critical |
 | **Cloud Providers** | Azure, Google Cloud, Digital Ocean | Critical/High |
+| **Cloud Storage** | S3 Buckets, GCS Buckets, Azure Blob Storage | High/Medium |
 | **Messaging** | Slack, Discord, Teams tokens | High/Medium |
 | **Payment** | Stripe, PayPal keys | Critical |
 | **SSH** | Private keys, authorized keys | Critical |
@@ -141,6 +143,37 @@ The extension automatically scans every webpage you visit. No manual action requ
 │ [Settings] [Export] [Highlight]         │
 └─────────────────────────────────────────┘
 ```
+
+### Cloud Bucket Scanning
+
+#### Overview
+The extension automatically detects cloud storage bucket URLs and tests them for public accessibility, which can indicate security misconfigurations.
+
+#### Supported Cloud Providers
+- **AWS S3**: Detects s3://, https://bucket.s3.amazonaws.com, and subdomain formats
+- **Google Cloud Storage**: Detects gs:// and https://storage.googleapis.com URLs
+- **Azure Blob Storage**: Detects https://account.blob.core.windows.net URLs
+- **DigitalOcean Spaces**: Detects DigitalOcean Spaces URLs
+- **Alibaba Cloud OSS**: Detects Alibaba Cloud Object Storage URLs
+
+#### How It Works
+1. **URL Detection**: Scans pages for cloud storage URL patterns
+2. **Accessibility Testing**: Makes HTTP requests to test if buckets allow public listing
+3. **Risk Assessment**: Classifies buckets as "open" (publicly accessible) or "secured"
+4. **Notification**: Alerts you when open buckets are found
+
+#### Bucket Finding Types
+- **Open S3 Bucket**: Publicly accessible AWS S3 bucket (High Risk)
+- **Open GCS Bucket**: Publicly accessible Google Cloud Storage bucket (High Risk)
+- **Open Azure Container**: Publicly accessible Azure Blob Storage container (High Risk)
+- **Secured Bucket**: Access denied or authentication required (Low Risk)
+
+#### Configuration Options
+Access bucket scanning settings through the extension settings:
+- **Enable/Disable**: Turn bucket scanning on or off entirely
+- **Provider Selection**: Choose which cloud providers to scan for
+- **Test Timeout**: Configure how long to wait for bucket responses (1-30 seconds)
+- **Concurrency**: Set maximum concurrent bucket tests (1-10)
 
 ### In-Page Highlighting
 
@@ -192,6 +225,13 @@ The extension automatically scans every webpage you visit. No manual action requ
 - **Trusted Domains**: Add domains to skip scanning
 - **Whitelist Management**: Import/export domain lists
 - **Per-Site Settings**: Configure site-specific behaviors
+
+#### 🪣 **Cloud Bucket Scanning Settings**
+- **Enable Bucket Scanning**: Turn cloud bucket detection on/off
+- **Provider Selection**: Choose which cloud providers to scan (AWS, GCP, Azure, etc.)
+- **Test Timeout**: Configure timeout for bucket accessibility tests (1-30 seconds)
+- **Concurrency Control**: Set maximum concurrent bucket tests (1-10)
+- **Public Access Testing**: Enable/disable actual accessibility testing
 
 #### 📊 **Privacy Settings**
 - **Data Storage**: Configure what data is stored locally
@@ -401,6 +441,23 @@ If you encounter false positives:
 - Try different export format
 - Check disk space
 
+#### Bucket Scanning Issues
+**Symptoms**: No bucket findings despite visible bucket URLs on page
+**Solutions**:
+- Check if bucket scanning is enabled in settings
+- Verify the cloud provider is enabled in settings
+- Check if bucket URLs match supported patterns
+- Increase test timeout if buckets are slow to respond
+- Check browser console for CORS or network errors
+
+#### Bucket Test Timeouts
+**Symptoms**: Bucket scanning taking too long or timing out
+**Solutions**:
+- Reduce test timeout in settings (default: 5 seconds)
+- Decrease concurrent test limit (default: 3)
+- Check network connection stability
+- Some buckets may be intentionally slow to respond
+
 ### Error Messages
 
 #### "Scanning failed for this page"
@@ -476,6 +533,15 @@ A: Consider reporting to the website owner through responsible disclosure practi
 
 **Q: Can I use this for security auditing?**
 A: Yes, the export functionality makes it suitable for security assessments and compliance auditing.
+
+**Q: What does "open bucket" mean?**
+A: An open bucket is a cloud storage container that allows public listing of its contents, which can expose sensitive files and data.
+
+**Q: Why are bucket tests sometimes slow?**
+A: Cloud providers may implement rate limiting or intentional delays. You can adjust the timeout settings to balance speed vs accuracy.
+
+**Q: Does bucket scanning work on all cloud providers?**
+A: Currently supports AWS S3, Google Cloud Storage, Azure Blob Storage, DigitalOcean Spaces, and Alibaba Cloud OSS. More providers may be added in future updates.
 
 ### Troubleshooting Questions
 
