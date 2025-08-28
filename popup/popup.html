@@ -33,6 +33,23 @@
             </div>
             <button class="btn btn-small" id="whitelistBtn">Add to Whitelist</button>
         </div>
+        
+        <!-- Findings Display Section -->
+        <div class="findings-section" id="findingsSection" style="display: none;">
+            <div class="findings-header">
+                <h4>Security Findings</h4>
+                <span class="findings-count" id="findingsCount">0</span>
+            </div>
+            <div class="findings-filters" id="findingsFilters" style="display: none;">
+                <button class="filter-btn active" id="filterAll" data-filter="all">All</button>
+                <button class="filter-btn" id="filterBuckets" data-filter="buckets">Buckets</button>
+                <button class="filter-btn" id="filterOther" data-filter="other">Other</button>
+                <button class="filter-btn" id="filterHigh" data-filter="high-risk">High Risk</button>
+            </div>
+            <div class="findings-list" id="findingsList">
+                <!-- Findings will be populated here -->
+            </div>
+        </div>
     </div>
     
     <div class="footer">
@@ -73,6 +90,18 @@
                         <div id="whitelistList" class="whitelist-list">
                             <!-- Whitelisted domains will be populated here -->
                         </div>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <h4>Debug Mode</h4>
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            <input type="checkbox" id="debugModeToggle" class="setting-checkbox">
+                            <span class="setting-text">Enable detailed console output</span>
+                        </label>
+                        <p class="setting-description">
+                            Shows detailed scan results, low-risk findings, and technical information in the browser console.
+                        </p>
                     </div>
                 </div>
                 <div class="setting-group">
