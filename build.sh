@@ -1,402 +1,266 @@
 #!/bin/bash
 
-#!/bin/bash
-# FerretWatch - Cross-browser Build Script
-# Builds extension for Firefox, Chrome, and Edge
+# FerretWatch - Unified Cross-browser Build Script
+# Builds optimized extension packages for Firefox, Chrome, and Edge
 
 set -e
-
-echo "🚀 Starting cross-browser build process..."
 
 # Configuration
 VERSION="2.2.0"
 BUILD_DIR="builds"
 DIST_DIR="$(pwd)/dist"
-SOURCE_FILES=(
-    "manifest.json"
-    "content.js"
-    "background.js"
-    "config/"
-    "popup/"
-    "utils/"
-    "icons/"
-    "docs/"
-    "_locales/"
-)
 
-# Create build directories
-mkdir -p "$BUILD_DIR"
-mkdir -p "$DIST_DIR"
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-echo "📁 Created build directories"
+# Print colored output
+print_status() {
+    echo -e "${GREEN}$1${NC}"
+}
 
-# Function to copy source files
-copy_source_files() {
+print_info() {
+    echo -e "${BLUE}$1${NC}"
+}
+
+print_warning() {
+    echo -e "${YELLOW}$1${NC}"
+}
+
+print_error() {
+    echo -e "${RED}$1${NC}"
+}
+
+# Check if required tools are available
+check_tools() {
+    print_info "🔧 Checking available build tools..."
+    
+    if command -v terser > /dev/null 2>&1; then
+        print_status "  ✅ Terser (JavaScript minification)"
+        HAS_TERSER=true
+    else
+        print_warning "  ⚠️  Terser not found - JS files will not be minified"
+        HAS_TERSER=false
+    fi
+    
+    if command -v jq > /dev/null 2>&1; then
+        print_status "  ✅ jq (JSON processing)"
+        HAS_JQ=true
+    else
+        print_warning "  ⚠️  jq not found - manifest processing may be limited"
+        HAS_JQ=false
+    fi
+}
+
+# Minify a JavaScript file
+minify_js() {
+    local input_file="$1"
+    local output_file="$2"
+    
+    if [[ "$HAS_TERSER" == "true" ]]; then
+        print_info "🗜️  Minifying JS: $(basename "$input_file")"
+        terser "$input_file" \
+            --compress drop_console=false,drop_debugger=true,unused=false \
+            --mangle reserved=['browser','chrome'] \
+            --output "$output_file" 2>/dev/null || cp "$input_file" "$output_file"
+    else
+        print_info "📋 Copying JS: $(basename "$input_file")"
+        cp "$input_file" "$output_file"
+    fi
+}
+
+# Copy and optimize files for a browser
+copy_browser_files() {
+    local browser="$1"
+    local target_dir="$BUILD_DIR/$browser"
+    
+    print_info "📋 Copying files to $target_dir..."
+    
+    # Create target directory structure
+    mkdir -p "$target_dir"/{config,popup,utils,icons,docs}
+    
+    # Copy main files
+    minify_js "background.js" "$target_dir/background.js"
+    minify_js "content.js" "$target_dir/content.js"
+    
+    # Copy directories
+    cp -r config/* "$target_dir/config/" 2>/dev/null || true
+    cp -r popup/* "$target_dir/popup/" 2>/dev/null || true
+    cp -r utils/* "$target_dir/utils/" 2>/dev/null || true
+    cp -r icons/* "$target_dir/icons/" 2>/dev/null || true
+    cp -r docs/* "$target_dir/docs/" 2>/dev/null || true
+    
+    # Copy patterns
+    cp config/patterns.js "$target_dir/config/patterns.js"
+    
+    # Minify popup JavaScript file
+    if [[ -f "$target_dir/popup/popup.js" && "$HAS_TERSER" == "true" ]]; then
+        print_info "🗜️  Minifying popup JS: popup.js"
+        terser "$target_dir/popup/popup.js" --compress drop_console=false --mangle --output "$target_dir/popup/popup.js.tmp" 2>/dev/null && mv "$target_dir/popup/popup.js.tmp" "$target_dir/popup/popup.js" || rm -f "$target_dir/popup/popup.js.tmp"
+    fi
+    
+    print_status "  ✅ Files copied to $target_dir"
+}
+
+# Create Firefox manifest
+create_firefox_manifest() {
     local target_dir="$1"
-    echo "📋 Copying source files to $target_dir..."
     
-    for file in "${SOURCE_FILES[@]}"; do
-        if [[ -e "$file" ]]; then
-            cp -r "$file" "$target_dir/"
-            echo "  ✅ Copied $file"
+    # Firefox uses the standard manifest.json
+    cp "manifest.json" "$target_dir/manifest.json"
+}
+
+# Create Chrome/Edge manifest (Manifest V3)
+create_chrome_manifest() {
+    local target_dir="$1"
+    
+    print_info "📝 Creating Chrome/Edge manifest..."
+    
+    if [[ "$HAS_JQ" == "true" ]]; then
+        # Use jq for precise manifest transformation
+        jq '.manifest_version = 3 |
+            .background = {"service_worker": "background.js"} |
+            del(.background.scripts) |
+            .action = .browser_action |
+            del(.browser_action) |
+            .host_permissions = .permissions |
+            .permissions = ["storage", "activeTab"]' \
+            manifest.json > "$target_dir/manifest.json"
+    else
+        # Fallback: use manifest-v3.json if available
+        if [[ -f "manifest-v3.json" ]]; then
+            cp "manifest-v3.json" "$target_dir/manifest.json"
         else
-            echo "  ⚠️  Warning: $file not found, skipping"
+            # Manual transformation
+            cp "manifest.json" "$target_dir/manifest.json"
+            print_warning "  ⚠️  Manual manifest transformation may be needed"
         fi
-    done
+    fi
 }
 
-# Function to create placeholder icons if they don't exist
-create_placeholder_icons() {
-    local target_dir="$1/icons"
-    mkdir -p "$target_dir"
+# Create a zip package
+create_package() {
+    local browser="$1"
+    local source_dir="$BUILD_DIR/$browser"
+    local package_name="ferretwatch-$browser-v$VERSION.zip"
     
-    # Create simple placeholder icons if they don't exist
-    local sizes=(16 32 48 128)
-    for size in "${sizes[@]}"; do
-        local icon_file="$target_dir/icon-${size}.png"
-        if [[ ! -f "$icon_file" ]]; then
-            echo "🎨 Creating placeholder icon: $icon_file"
-            # Create a simple colored square as placeholder
-            # This would require ImageMagick: convert -size ${size}x${size} xc:#4285f4 "$icon_file"
-            # For now, just create an empty file as placeholder
-            touch "$icon_file"
-        fi
-    done
-}
-
-# Build Firefox version
-build_firefox() {
-    local firefox_dir="$BUILD_DIR/firefox"
-    echo "🦊 Building Firefox version..."
+    print_info "📦 Creating package for $browser..."
     
-    rm -rf "$firefox_dir"
-    mkdir -p "$firefox_dir"
-    
-    # Copy source files
-    copy_source_files "$firefox_dir"
-    
-    # Use Firefox manifest
-    cp "manifest.json" "$firefox_dir/manifest.json"
-    
-    # Create icons
-    create_placeholder_icons "$firefox_dir"
-    
-    # Create Firefox-specific files
-    cat > "$firefox_dir/README_FIREFOX.md" << 'EOF'
-# Firefox Credential Scanner
-
-This is the Firefox version of the Credential Scanner extension.
-
-## Installation
-1. Open Firefox
-2. Go to about:debugging
-3. Click "This Firefox"
-4. Click "Load Temporary Add-on"
-5. Select manifest.json from this directory
-
-## Features
-- Full Manifest V2 compatibility
-- Native Firefox API support
-- Optimized for Firefox performance
-
-For more information, see the main documentation.
-EOF
-    
-    # Package Firefox extension
-    local firefox_package="ferretwatch-firefox-v${VERSION}.zip"
-    cd "$firefox_dir"
-    zip -r "$(pwd)/../../dist/$firefox_package" . -x "*.DS_Store" "*.git*" "node_modules/*"
+    cd "$source_dir"
+    zip -r "$DIST_DIR/$package_name" . > /dev/null 2>&1
     cd - > /dev/null
     
-    echo "✅ Firefox package created: dist/$firefox_package"
-}
-
-# Build Chrome version
-build_chrome() {
-    local chrome_dir="$BUILD_DIR/chrome"
-    echo "🔵 Building Chrome version..."
-    
-    rm -rf "$chrome_dir"
-    mkdir -p "$chrome_dir"
-    
-    # Copy source files
-    copy_source_files "$chrome_dir"
-    
-    # Use Chrome manifest (Manifest V3) - convert from Firefox manifest
-    if [[ -f "$chrome_dir/manifest.json" ]]; then
-        # Transform Firefox manifest to Chrome V3 manifest
-        python3 << 'EOF'
-import json
-import sys
-
-# Read the Firefox manifest
-with open('builds/chrome/manifest.json', 'r') as f:
-    manifest = json.load(f)
-
-# Convert to Manifest V3 for Chrome
-manifest['manifest_version'] = 3
-
-# Replace browser_action with action
-if 'browser_action' in manifest:
-    manifest['action'] = manifest.pop('browser_action')
-
-# Remove Firefox-specific settings
-if 'browser_specific_settings' in manifest:
-    del manifest['browser_specific_settings']
-
-# Update content scripts structure if needed
-# (Current structure should be compatible)
-
-# Add host permissions (required in MV3)
-if 'permissions' in manifest and '<all_urls>' in manifest['permissions']:
-    manifest['host_permissions'] = ['<all_urls>']
-    manifest['permissions'] = [p for p in manifest['permissions'] if p != '<all_urls>']
-
-# Write Chrome manifest
-with open('builds/chrome/manifest.json', 'w') as f:
-    json.dump(manifest, f, indent=2)
-EOF
-    fi
-    
-    # Create icons
-    create_placeholder_icons "$chrome_dir"
-    
-    # Add browser compatibility layer
-    cp "utils/browser-compat.js" "$chrome_dir/utils/"
-    
-    # Update content script to include compatibility layer
-    if [[ -f "$chrome_dir/content.js" ]]; then
-        # Prepend compatibility layer import
-        cat > "$chrome_dir/content-temp.js" << 'EOF'
-// Chrome compatibility layer
-if (typeof importScripts !== 'undefined') {
-    importScripts('utils/browser-compat.js');
-}
-
-EOF
-        cat "$chrome_dir/content.js" >> "$chrome_dir/content-temp.js"
-        mv "$chrome_dir/content-temp.js" "$chrome_dir/content.js"
-    fi
-    
-    # Create Chrome-specific files
-    cat > "$chrome_dir/README_CHROME.md" << 'EOF'
-# Chrome Credential Scanner
-
-This is the Chrome version of the Credential Scanner extension.
-
-## Installation
-1. Open Chrome
-2. Go to chrome://extensions/
-3. Enable "Developer mode"
-4. Click "Load unpacked"
-5. Select this directory
-
-## Features
-- Manifest V3 compatibility
-- Service Worker background script
-- Chrome-specific API optimizations
-
-For more information, see the main documentation.
-EOF
-    
-    # Package Chrome extension
-    local chrome_package="ferretwatch-chrome-v${VERSION}.zip"
-    cd "$chrome_dir"
-    zip -r "$(pwd)/../../dist/$chrome_package" . -x "*.DS_Store" "*.git*" "node_modules/*"
-    cd - > /dev/null
-    
-    echo "✅ Chrome package created: dist/$chrome_package"
-}
-
-# Build Edge version
-build_edge() {
-    local edge_dir="$BUILD_DIR/edge"
-    echo "🔷 Building Edge version..."
-    
-    rm -rf "$edge_dir"
-    mkdir -p "$edge_dir"
-    
-    # Edge uses the same structure as Chrome (Manifest V3)
-    copy_source_files "$edge_dir"
-    
-    # Use Edge manifest (Manifest V3) - convert from Firefox manifest  
-    if [[ -f "$edge_dir/manifest.json" ]]; then
-        # Transform Firefox manifest to Edge V3 manifest
-        python3 << 'EOF'
-import json
-import sys
-
-# Read the Firefox manifest
-with open('builds/edge/manifest.json', 'r') as f:
-    manifest = json.load(f)
-
-# Convert to Manifest V3 for Edge
-manifest['manifest_version'] = 3
-
-# Replace browser_action with action
-if 'browser_action' in manifest:
-    manifest['action'] = manifest.pop('browser_action')
-
-# Remove Firefox-specific settings
-if 'browser_specific_settings' in manifest:
-    del manifest['browser_specific_settings']
-
-# Add host permissions (required in MV3)
-if 'permissions' in manifest and '<all_urls>' in manifest['permissions']:
-    manifest['host_permissions'] = ['<all_urls>']
-    manifest['permissions'] = [p for p in manifest['permissions'] if p != '<all_urls>']
-
-# Write Edge manifest
-with open('builds/edge/manifest.json', 'w') as f:
-    json.dump(manifest, f, indent=2)
-EOF
-    fi
-    
-    # Update name for Edge
-    if command -v jq > /dev/null; then
-        jq '.name = "Credential Scanner for Edge"' "$edge_dir/manifest.json" > "$edge_dir/manifest-temp.json"
-        mv "$edge_dir/manifest-temp.json" "$edge_dir/manifest.json"
-    fi
-    
-    create_placeholder_icons "$edge_dir"
-    cp "utils/browser-compat.js" "$edge_dir/utils/"
-    
-    # Create Edge-specific files
-    cat > "$edge_dir/README_EDGE.md" << 'EOF'
-# Edge Credential Scanner
-
-This is the Microsoft Edge version of the Credential Scanner extension.
-
-## Installation
-1. Open Microsoft Edge
-2. Go to edge://extensions/
-3. Enable "Developer mode"
-4. Click "Load unpacked"
-5. Select this directory
-
-## Features
-- Manifest V3 compatibility (Chromium-based)
-- Edge-specific optimizations
-- Full feature compatibility
-
-For more information, see the main documentation.
-EOF
-    
-    # Package Edge extension
-    local edge_package="ferretwatch-edge-v${VERSION}.zip"
-    cd "$edge_dir"
-    zip -r "$(pwd)/../../dist/$edge_package" . -x "*.DS_Store" "*.git*" "node_modules/*"
-    cd - > /dev/null
-    
-    echo "✅ Edge package created: dist/$edge_package"
+    print_status "✅ Package created: $DIST_DIR/$package_name"
 }
 
 # Generate build report
-generate_build_report() {
-    echo "📊 Generating build report..."
+generate_report() {
+    local report_file="$DIST_DIR/BUILD_REPORT.md"
     
-    cat > "$DIST_DIR/BUILD_REPORT.md" << EOF
-# Build Report - Credential Scanner v${VERSION}
+    print_info "📊 Generating build report..."
+    
+    cat > "$report_file" << EOF
+# FerretWatch Build Report
 
-Generated on: $(date)
+**Build Date:** $(date)
+**Version:** $VERSION
+**Build Tools:**
+- Terser: ${HAS_TERSER}
+- jq: ${HAS_JQ}
 
-## Package Information
+## Generated Packages
 
-| Browser | Package | Size | Manifest Version |
-|---------|---------|------|------------------|
-| Firefox | ferretwatch-firefox-v${VERSION}.zip | $(du -h "dist/ferretwatch-firefox-v${VERSION}.zip" 2>/dev/null | cut -f1 || echo "N/A") | V2 |
-| Chrome | ferretwatch-chrome-v${VERSION}.zip | $(du -h "dist/ferretwatch-chrome-v${VERSION}.zip" 2>/dev/null | cut -f1 || echo "N/A") | V3 |
-| Edge | ferretwatch-edge-v${VERSION}.zip | $(du -h "dist/ferretwatch-edge-v${VERSION}.zip" 2>/dev/null | cut -f1 || echo "N/A") | V3 |
+EOF
+    
+    for browser in firefox chrome edge; do
+        local package_name="ferretwatch-$browser-v$VERSION.zip"
+        if [[ -f "$DIST_DIR/$package_name" ]]; then
+            local size=$(ls -lh "$DIST_DIR/$package_name" | awk '{print $5}')
+            echo "- **$browser**: $package_name ($size)" >> "$report_file"
+        fi
+    done
+    
+    cat >> "$report_file" << EOF
 
 ## Build Configuration
 
-- **Version**: ${VERSION}
-- **Build Date**: $(date)
-- **Source Files**: ${#SOURCE_FILES[@]} file groups
-- **Target Browsers**: Firefox, Chrome, Edge
+- **Unified Scripts**: Yes
+- **Minification**: ${HAS_TERSER}
+- **Console Logging**: Preserved for debugging
+- **Source Maps**: Not generated
 
-## Browser-Specific Features
+## Browser-Specific Changes
 
-### Firefox (Manifest V2)
-- Native browser API support
-- Persistent background page
-- Full WebExtensions API
-- Optimized DOM manipulation
+### Firefox
+- Uses Manifest V2
+- Uses browser.* APIs
+- Standard permissions model
 
-### Chrome (Manifest V3)
-- Service Worker background script
-- Declarative permissions
-- Promise-based APIs via compatibility layer
-- Chrome Web Store compliant
+### Chrome/Edge
+- Uses Manifest V3
+- Uses chrome.* APIs with promise wrappers
+- Service worker background script
+- Host permissions separated from regular permissions
 
-### Edge (Manifest V3)
-- Chromium-based compatibility
-- Microsoft Edge Add-ons compliant
-- Same feature set as Chrome version
-
-## Installation Instructions
-
-Each package includes browser-specific README files with detailed installation instructions.
-
-## Verification
-
-To verify package integrity:
-\`\`\`bash
-# Check package contents
-unzip -l dist/ferretwatch-firefox-v${VERSION}.zip
-unzip -l dist/ferretwatch-chrome-v${VERSION}.zip
-unzip -l dist/ferretwatch-edge-v${VERSION}.zip
-\`\`\`
-
-## Next Steps
-
-1. Test each package in respective browsers
-2. Submit to browser extension stores
-3. Update documentation with store links
 EOF
-
-    echo "✅ Build report generated: $DIST_DIR/BUILD_REPORT.md"
+    
+    print_status "✅ Build report generated: $report_file"
 }
 
 # Main build process
 main() {
-    echo "🔧 FerretWatch - Cross-browser Build"
-    echo "Version: $VERSION"
-    echo "Target browsers: Firefox, Chrome, Edge"
+    print_status "🚀 FerretWatch - Unified Cross-browser Build"
+    print_info "Version: $VERSION"
+    print_info "Target browsers: Firefox, Chrome, Edge"
     echo ""
     
-    # Clean previous builds but keep dist directory
-    rm -rf "$BUILD_DIR"
-    mkdir -p "$DIST_DIR"
-    
-    # Build for each browser
-    build_firefox
+    # Setup
+    check_tools
+    mkdir -p "$BUILD_DIR" "$DIST_DIR"
     echo ""
     
-    build_chrome
+    # Build Firefox
+    print_status "🦊 Building Firefox version..."
+    copy_browser_files "firefox"
+    create_firefox_manifest "$BUILD_DIR/firefox"
+    create_package "firefox"
     echo ""
     
-    build_edge
+    # Build Chrome
+    print_status "🔵 Building Chrome version..."
+    copy_browser_files "chrome"
+    create_chrome_manifest "$BUILD_DIR/chrome"
+    create_package "chrome"
+    echo ""
+    
+    # Build Edge
+    print_status "🔷 Building Edge version..."
+    copy_browser_files "edge"
+    create_chrome_manifest "$BUILD_DIR/edge"
+    create_package "edge"
     echo ""
     
     # Generate report
-    generate_build_report
+    generate_report
     echo ""
     
     # Summary
-    echo "🎉 Build process completed successfully!"
+    print_status "🎉 Build process completed successfully!"
     echo ""
-    echo "📦 Generated packages:"
-    ls -la "$DIST_DIR"/*.zip 2>/dev/null || echo "  No packages found"
+    print_info "📦 Generated packages:"
+    ls -la "$DIST_DIR"/*.zip 2>/dev/null || print_warning "No packages found"
     echo ""
-    echo "📄 Build report: $DIST_DIR/BUILD_REPORT.md"
+    print_info "📄 Build report: $DIST_DIR/BUILD_REPORT.md"
     echo ""
-    echo "🧪 Next steps:"
-    echo "  1. Test packages in respective browsers"
-    echo "  2. Run test suite on each version"
-    echo "  3. Submit to browser extension stores"
+    print_status "🧪 Next steps:"
+    print_info "  1. Test packages in respective browsers"
+    print_info "  2. Verify functionality and performance"
+    print_info "  3. Submit to browser extension stores"
     echo ""
-    echo "✅ Build complete!"
+    print_status "✅ Build complete!"
 }
 
 # Run main function
