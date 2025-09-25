@@ -1,10 +1,9 @@
 ---
-layout: spec
-title: Accessibility and Internationalization Specification
+layout: default
+title: Accessibility & i18n
+parent: Specifications
+nav_order: 2
 description: Accessibility standards and internationalization requirements to ensure FerretWatch Enhanced is usable by all users regardless of abilities, languages, or cultural contexts
-date: 2025-09-25
-version: 1.0
-toc: true
 ---
 # 🌐 Accessibility & Internationalization Specification
 

@@ -1,21 +1,46 @@
 ---
-layout: home
+layout: default
 title: Home
+nav_order: 1
+description: "Privacy-preserving browser extension for suspicious page detection"
+permalink: /
 ---
 
-# FerretWatch Enhanced Documentation
+# 🛡️ FerretWatch Enhanced Documentation
 
 **Privacy-preserving browser extension for suspicious page detection**
+
+{: .fs-6 .fw-300 }
+
+---
 
 FerretWatch Enhanced empowers users to browse safely by instantly detecting and alerting them to suspicious web pages, protecting them from phishing, scams, and other web-based threats.
 
 ## 🎯 Key Features
 
-- **Local-First Detection**: All threat analysis happens on-device for maximum privacy
-- **Real-Time Protection**: Instant alerts for suspicious pages with explainable scoring
-- **Community-Powered**: Crowdsourced threat intelligence with privacy preservation
-- **Zero Data Collection**: No browsing history or personal data leaves your browser
-- **Multi-Browser Support**: Available for Chrome, Firefox, and Edge
+<div class="code-example" markdown="1">
+
+**Local-First Detection**
+{: .label .label-blue }
+
+All threat analysis happens on-device for maximum privacy
+
+**Real-Time Protection**
+{: .label .label-green }
+
+Instant alerts for suspicious pages with explainable scoring
+
+**Community-Powered**
+{: .label .label-purple }
+
+Crowdsourced threat intelligence with privacy preservation
+
+**Zero Data Collection**
+{: .label .label-red }
+
+No browsing history or personal data leaves your browser
+
+</div>
 
 ## 📚 Documentation Sections
 

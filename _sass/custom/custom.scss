@@ -1,0 +1,176 @@
+//
+// FerretWatch Enhanced Custom Styles
+//
+
+// Brand elements
+.site-title::before {
+  content: "🛡️ ";
+  font-size: 1.2em;
+  margin-right: 0.3em;
+}
+
+// Enhanced heading styles
+.main-content {
+  h1 {
+    border-bottom: 3px solid #1e40af;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1.5rem;
+
+    // Emoji spacing
+    &:first-child {
+      margin-top: 0;
+    }
+  }
+
+  h2 {
+    color: #1f2937;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.3rem;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+  }
+
+  h3 {
+    color: #1e40af;
+    margin-top: 1.5rem;
+  }
+
+  h4 {
+    color: #059669;
+    font-weight: 600;
+  }
+}
+
+// Code blocks enhancement
+.highlight {
+  border-left: 4px solid #1e40af;
+  border-radius: 6px;
+  margin: 1rem 0;
+
+  pre {
+    padding: 1rem !important;
+  }
+}
+
+// Inline code styling
+code {
+  background-color: #f1f5f9 !important;
+  color: #1e293b !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 4px !important;
+  padding: 0.1rem 0.3rem !important;
+  font-weight: 600 !important;
+}
+
+// Table enhancements
+table {
+  border: 1px solid #e5e7eb !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+
+  th {
+    background-color: #1e40af !important;
+    color: white !important;
+    font-weight: 600 !important;
+  }
+
+  tr:nth-child(even) {
+    background-color: #f8fafc !important;
+  }
+
+  tr:hover {
+    background-color: #f1f5f9 !important;
+  }
+}
+
+// Alert boxes for important content
+blockquote {
+  border-left: 4px solid #3b82f6 !important;
+  background-color: #eff6ff !important;
+  padding: 1rem 1.5rem !important;
+  margin: 1.5rem 0 !important;
+  border-radius: 0 6px 6px 0 !important;
+
+  &.warning {
+    border-left-color: #f59e0b !important;
+    background-color: #fffbeb !important;
+  }
+
+  &.danger {
+    border-left-color: #dc2626 !important;
+    background-color: #fef2f2 !important;
+  }
+
+  &.success {
+    border-left-color: #059669 !important;
+    background-color: #f0fdf4 !important;
+  }
+
+  p:last-child {
+    margin-bottom: 0 !important;
+  }
+}
+
+// Navigation enhancements
+.site-nav .nav-list-item .nav-list-link {
+  font-weight: 500;
+
+  &:hover {
+    background-color: #eff6ff;
+  }
+}
+
+// Badge-like styling for metadata
+.spec-meta {
+  display: flex;
+  gap: 1rem;
+  margin: 1rem 0;
+  font-size: 0.875rem;
+
+  span {
+    background-color: #f1f5f9;
+    color: #475569;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    border: 1px solid #e2e8f0;
+  }
+}
+
+// Footer customization
+.site-footer {
+  border-top: 2px solid #1e40af;
+
+  .site-footer-text {
+    color: #6b7280;
+    font-size: 0.875rem;
+  }
+}
+
+// Search box styling
+.search-input-wrap {
+  .search-input {
+    border: 2px solid #e5e7eb !important;
+    border-radius: 8px !important;
+
+    &:focus {
+      border-color: #1e40af !important;
+      box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1) !important;
+    }
+  }
+}
+
+// Button styling
+.btn {
+  border-radius: 6px !important;
+  font-weight: 500 !important;
+
+  &.btn-primary {
+    background-color: #1e40af !important;
+    border-color: #1e40af !important;
+
+    &:hover {
+      background-color: #1d4ed8 !important;
+      border-color: #1d4ed8 !important;
+    }
+  }
+}

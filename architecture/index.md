@@ -1,7 +1,10 @@
 ---
-layout: page
-title: Architecture Documentation
+layout: default
+title: Architecture
+nav_order: 3
 description: Technical architecture, system design, and integration specifications
+has_children: true
+permalink: /architecture/
 ---
 
 # Architecture Documentation

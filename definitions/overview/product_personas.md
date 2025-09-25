@@ -1,8 +1,9 @@
 ---
-layout: page
+layout: default
 title: User Personas
+parent: Overview
+nav_order: 2
 description: Detailed user personas for FerretWatch Enhanced including busy professionals, security-conscious users, elderly users, and developers
-date: 2025-09-25
 ---
 # 👥 User Personas
 

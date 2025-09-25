@@ -1,7 +1,10 @@
 ---
-layout: page
-title: Product Overview
+layout: default
+title: Overview
+nav_order: 2
 description: Product vision, user personas, and core requirements for FerretWatch Enhanced
+has_children: true
+permalink: /overview/
 ---
 
 # Product Overview

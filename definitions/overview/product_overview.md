@@ -1,10 +1,9 @@
 ---
-layout: spec
+layout: default
 title: Product Overview
+parent: Overview
+nav_order: 1
 description: Product vision, problem statement, goals, and success metrics for FerretWatch Enhanced
-date: 2025-09-25
-version: 1.0
-toc: true
 ---
 # 🎯 Product Overview
 

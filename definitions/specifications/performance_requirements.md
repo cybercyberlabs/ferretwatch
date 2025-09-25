@@ -1,10 +1,9 @@
 ---
-layout: spec
-title: Performance Requirements Specification
+layout: default
+title: Performance Requirements
+parent: Specifications
+nav_order: 1
 description: Performance constraints and resource budgets for FerretWatch Enhanced to ensure responsive user experience with comprehensive threat detection
-date: 2025-09-25
-version: 1.0
-toc: true
 ---
 # ⚡ Performance Requirements Specification
 

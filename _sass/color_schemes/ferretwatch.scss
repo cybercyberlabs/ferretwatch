@@ -1,0 +1,51 @@
+//
+// FerretWatch Enhanced Color Scheme
+// Security-focused, professional, and trustworthy
+//
+
+// Brand Colors
+$ferret-primary: #1e40af;      // Strong blue - trust and security
+$ferret-secondary: #059669;    // Green - safety and protection
+$ferret-accent: #dc2626;       // Red - alerts and warnings
+$ferret-dark: #1f2937;         // Dark gray - professional
+$ferret-light: #f8fafc;        // Light gray - clean background
+
+// Core color scheme mapping
+$link-color: $ferret-primary;
+$btn-primary-color: $ferret-primary;
+
+// Navigation and structure
+$nav-child-link-color: #6b7280;
+$nav-child-link-color-hover: $ferret-primary;
+$border-color: #e5e7eb;
+
+// Content colors
+$body-background-color: #ffffff;
+$sidebar-color: #f9fafb;
+$body-text-color: #374151;
+$body-heading-color: $ferret-dark;
+
+// Code and syntax
+$code-background-color: #f3f4f6;
+$table-background-color: $ferret-light;
+
+// Search
+$search-background-color: #ffffff;
+$search-result-preview-color: #6b7280;
+
+// Focus and interaction
+$focus-color: $ferret-primary;
+$btn-primary-color-hover: darken($ferret-primary, 10%);
+
+// Alert/Warning styling
+.text-red-600 {
+  color: $ferret-accent !important;
+}
+
+.text-green-600 {
+  color: $ferret-secondary !important;
+}
+
+.text-blue-600 {
+  color: $ferret-primary !important;
+}

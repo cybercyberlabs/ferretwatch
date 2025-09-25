@@ -1,10 +1,9 @@
 ---
-layout: spec
+layout: default
 title: Architecture Overview
+parent: Architecture
+nav_order: 1
 description: Privacy-preserving browser extension architecture for suspicious web page detection through client-side analysis and centralized rule distribution
-date: 2025-09-25
-version: 1.0
-toc: true
 ---
 # 🏗️ Architecture Overview
 

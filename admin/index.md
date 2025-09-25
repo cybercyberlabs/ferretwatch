@@ -1,7 +1,10 @@
 ---
-layout: page
+layout: default
 title: Administration
+nav_order: 5
 description: Administrative interfaces and management tools
+has_children: true
+permalink: /admin/
 ---
 
 # Administration

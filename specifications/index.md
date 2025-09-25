@@ -1,7 +1,10 @@
 ---
-layout: page
-title: Technical Specifications
+layout: default
+title: Specifications
+nav_order: 4
 description: Comprehensive technical specifications for all system components
+has_children: true
+permalink: /specifications/
 ---
 
 # Technical Specifications
