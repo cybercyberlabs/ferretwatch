@@ -1,0 +1,122 @@
+# Jekyll configuration for FerretWatch Enhanced Documentation
+title: FerretWatch Enhanced
+description: Privacy-preserving browser extension for suspicious page detection
+baseurl: "/ext-def"
+url: "https://ferretwatch.github.io"
+
+# Jekyll settings
+markdown: kramdown
+highlighter: rouge
+theme: minima
+
+# Kramdown settings
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    css_class: 'highlight'
+    span:
+      line_numbers: false
+    block:
+      line_numbers: true
+
+# Plugins
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+  - jekyll-seo-tag
+  - jekyll-toc
+
+# Navigation structure
+header_pages:
+  - overview/index.md
+  - architecture/index.md
+  - specifications/index.md
+  - admin/index.md
+
+# Collections
+collections:
+  overview:
+    output: true
+    permalink: /:collection/:name/
+  architecture:
+    output: true
+    permalink: /:collection/:name/
+  specifications:
+    output: true
+    permalink: /:collection/:name/
+  admin:
+    output: true
+    permalink: /:collection/:name/
+
+# Defaults
+defaults:
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: "page"
+  - scope:
+      path: ""
+      type: "posts"
+    values:
+      layout: "post"
+  - scope:
+      path: ""
+      type: "overview"
+    values:
+      layout: "spec"
+  - scope:
+      path: ""
+      type: "architecture"
+    values:
+      layout: "spec"
+  - scope:
+      path: ""
+      type: "specifications"
+    values:
+      layout: "spec"
+  - scope:
+      path: ""
+      type: "admin"
+    values:
+      layout: "spec"
+
+# Site settings
+author:
+  name: FerretWatch Team
+  email: team@ferretwatch.com
+
+# Social links
+github_username: ferretwatch
+twitter_username: ferretwatch
+
+# Build settings
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor/bundle/
+  - vendor/cache/
+  - vendor/gems/
+  - vendor/ruby/
+  - README.md
+  - .gitignore
+  - .github/
+
+# Include files
+include:
+  - _pages
+
+# Sass settings
+sass:
+  sass_dir: _sass
+  style: compressed
+
+# Table of contents
+toc:
+  min_level: 1
+  max_level: 4
+  list_class: "section-nav"
+  item_class: "toc-entry"
+  item_prefix: "toc-"

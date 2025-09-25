@@ -1,0 +1,65 @@
+<header class="site-header" role="banner">
+
+  <div class="wrapper">
+    {%- assign default_paths = site.pages | map: "path" -%}
+    {%- assign page_paths = site.header_pages | default: default_paths -%}
+    <a class="site-title" rel="author" href="{{ "/" | relative_url }}">
+      <span class="site-icon">🛡️</span>
+      {{ site.title | escape }}
+    </a>
+
+    {%- if page_paths -%}
+      <nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger">
+          <a class="page-link" href="{{ "/" | relative_url }}">Home</a>
+          <div class="dropdown">
+            <a class="page-link dropdown-toggle" href="#">Overview</a>
+            <div class="dropdown-content">
+              <a href="{{ "/overview/product_overview" | relative_url }}">Product Overview</a>
+              <a href="{{ "/overview/product_personas" | relative_url }}">User Personas</a>
+              <a href="{{ "/overview/product_user_stories" | relative_url }}">User Stories</a>
+              <a href="{{ "/overview/product_user_journeys" | relative_url }}">User Journeys</a>
+            </div>
+          </div>
+          <div class="dropdown">
+            <a class="page-link dropdown-toggle" href="#">Architecture</a>
+            <div class="dropdown-content">
+              <a href="{{ "/architecture/architecture_overview" | relative_url }}">Architecture Overview</a>
+              <a href="{{ "/architecture/architecture_views" | relative_url }}">Architecture Views</a>
+              <a href="{{ "/definitions/architecture_external_data_sources" | relative_url }}">External Data Sources</a>
+            </div>
+          </div>
+          <div class="dropdown">
+            <a class="page-link dropdown-toggle" href="#">Specifications</a>
+            <div class="dropdown-content">
+              <a href="{{ "/specifications/product_detection_and_scoring_spec" | relative_url }}">Detection & Scoring</a>
+              <a href="{{ "/specifications/product_reporting_and_admin_spec" | relative_url }}">Reporting & Admin</a>
+              <a href="{{ "/specifications/performance_requirements" | relative_url }}">Performance</a>
+              <a href="{{ "/specifications/accessibility_internationalization" | relative_url }}">Accessibility & i18n</a>
+              <a href="{{ "/specifications/error_handling_recovery" | relative_url }}">Error Handling</a>
+              <a href="{{ "/specifications/extension_lifecycle_management" | relative_url }}">Lifecycle Management</a>
+              <a href="{{ "/specifications/testing_quality_assurance" | relative_url }}">Testing & QA</a>
+              <a href="{{ "/specifications/developer_experience" | relative_url }}">Developer Experience</a>
+              <a href="{{ "/specifications/operational_runbooks" | relative_url }}">Operations</a>
+            </div>
+          </div>
+          <div class="dropdown">
+            <a class="page-link dropdown-toggle" href="#">Admin</a>
+            <div class="dropdown-content">
+              <a href="{{ "/admin_interface/product_admin_interface" | relative_url }}">Admin Interface</a>
+            </div>
+          </div>
+        </div>
+      </nav>
+    {%- endif -%}
+  </div>
+</header>
