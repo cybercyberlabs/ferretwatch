@@ -13,7 +13,7 @@ This section contains detailed technical specifications covering all aspects of 
 
 ## Core System Specifications
 
-### [Detection & Scoring](product_detection_and_scoring_spec.html)
+### [Detection & Scoring](detection_and_scoring)
 Comprehensive specification for threat detection algorithms and scoring models.
 
 **Key Areas:**
@@ -22,7 +22,7 @@ Comprehensive specification for threat detection algorithms and scoring models.
 - Threat scoring models and confidence calculation
 - Brand impersonation detection
 
-### [Reporting & Administration](product_reporting_and_admin_spec.html)
+### [Reporting & Administration](reporting_and_admin)
 User reporting workflows and administrative interface specifications.
 
 **Coverage:**
@@ -33,7 +33,7 @@ User reporting workflows and administrative interface specifications.
 
 ## Quality & Performance
 
-### [Performance Requirements](performance_requirements.html)
+### [Performance Requirements](performance_requirements)
 Resource budgets, monitoring, and optimization strategies.
 
 **Specifications:**
@@ -42,7 +42,7 @@ Resource budgets, monitoring, and optimization strategies.
 - Degradation strategies under resource pressure
 - Cross-platform performance targets
 
-### [Testing & Quality Assurance](testing_quality_assurance.html)
+### [Testing & Quality Assurance](testing_and_qa)
 Comprehensive testing strategy and quality assurance processes.
 
 **Testing Areas:**
@@ -51,7 +51,7 @@ Comprehensive testing strategy and quality assurance processes.
 - Security and penetration testing
 - User acceptance testing protocols
 
-### [Error Handling & Recovery](error_handling_recovery.html)
+### [Error Handling & Recovery](error_handling_recovery)
 Resilience patterns and recovery mechanisms.
 
 **Error Management:**
@@ -62,7 +62,7 @@ Resilience patterns and recovery mechanisms.
 
 ## Accessibility & Internationalization
 
-### [Accessibility & i18n](accessibility_internationalization.html)
+### [Accessibility & i18n](accessibility_internationalization)
 Inclusive design requirements and internationalization support.
 
 **Requirements:**
@@ -73,7 +73,7 @@ Inclusive design requirements and internationalization support.
 
 ## Development & Operations
 
-### [Extension Lifecycle Management](extension_lifecycle_management.html)
+### [Extension Lifecycle Management](lifecycle_management)
 Development, deployment, and maintenance procedures.
 
 **Lifecycle Management:**
@@ -82,7 +82,7 @@ Development, deployment, and maintenance procedures.
 - Update mechanisms and rollout procedures
 - Enterprise deployment considerations
 
-### [Developer Experience](developer_experience.html)
+### [Developer Experience](developer_experience)
 Development environment, tools, and contribution guidelines.
 
 **Developer Tools:**
@@ -91,7 +91,7 @@ Development environment, tools, and contribution guidelines.
 - Testing frameworks and debugging tools
 - Community contribution processes
 
-### [Operational Runbooks](operational_runbooks.html)
+### [Operational Runbooks](operational_runbooks)
 Operations and maintenance procedures for production systems.
 
 **Operations:**

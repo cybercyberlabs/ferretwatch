@@ -13,7 +13,7 @@ This section provides comprehensive technical architecture documentation for Fer
 
 ## Documents in this Section
 
-### [Architecture Overview](architecture_overview.html)
+### [Architecture Overview](architecture_overview)
 High-level system architecture, design principles, and technical constraints.
 
 **Key Topics:**
@@ -23,7 +23,7 @@ High-level system architecture, design principles, and technical constraints.
 - Performance and technical constraints
 - Core design principles
 
-### [Architecture Views](architecture_views.html)
+### [Architecture Views](architecture_views)
 Detailed technical diagrams and architectural views showing system components and their relationships.
 
 **Architectural Views:**
@@ -32,7 +32,7 @@ Detailed technical diagrams and architectural views showing system components an
 - Data flow diagrams
 - Integration patterns
 
-### [External Data Sources](../definitions/architecture_external_data_sources.html)
+### [External Data Sources](external_data_sources)
 Integration specifications for external threat intelligence feeds and data enrichment services.
 
 **Data Sources:**

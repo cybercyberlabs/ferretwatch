@@ -13,7 +13,7 @@ This section covers the administrative tools and interfaces for managing FerretW
 
 ## Documents in this Section
 
-### [Admin Interface](../admin_interface/product_admin_interface.html)
+### [Admin Interface](admin_interface)
 Comprehensive specification for the administrative console and management interfaces.
 
 **Key Features:**

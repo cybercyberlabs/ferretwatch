@@ -13,7 +13,7 @@ This section covers the foundational product definition for FerretWatch Enhanced
 
 ## Documents in this Section
 
-### [Product Overview](product_overview.html)
+### [Product Overview](product_overview)
 Complete product vision, problem statement, goals, and success metrics. Defines the core value proposition and market positioning for FerretWatch Enhanced.
 
 **Key Topics:**
@@ -22,7 +22,7 @@ Complete product vision, problem statement, goals, and success metrics. Defines 
 - Success metrics and KPIs
 - Local-first privacy enhancements
 
-### [User Personas](product_personas.html)
+### [User Personas](product_personas)
 Detailed user profiles representing the primary target audiences for FerretWatch Enhanced.
 
 **Featured Personas:**
@@ -31,7 +31,7 @@ Detailed user profiles representing the primary target audiences for FerretWatch
 - **Alex** - The College Student (high technical proficiency, security learning)
 - **Maria** - The Small Business Owner (employee protection, cost-conscious)
 
-### [User Stories](product_user_stories.html)
+### [User Stories](product_user_stories)
 Comprehensive user stories defining feature requirements from the user perspective.
 
 **Story Categories:**
@@ -41,7 +41,7 @@ Comprehensive user stories defining feature requirements from the user perspecti
 - User experience and accessibility
 - Administrator capabilities
 
-### [User Journeys](product_user_journeys.html)
+### [User Journeys](product_user_journeys)
 End-to-end user flows documenting how different personas interact with FerretWatch Enhanced across various scenarios.
 
 **Journey Maps:**

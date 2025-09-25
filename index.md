@@ -47,35 +47,35 @@ No browsing history or personal data leaves your browser
 ### [Product Overview](overview/)
 Learn about the product vision, user personas, problem statement, and core objectives.
 
-- [Product Overview](overview/product_overview.html) - Vision, goals, and success metrics
-- [User Personas](overview/product_personas.html) - Target user profiles and use cases
-- [User Stories](overview/product_user_stories.html) - Detailed feature requirements
-- [User Journeys](overview/product_user_journeys.html) - End-to-end user flows
+- [Product Overview](overview/product_overview) - Vision, goals, and success metrics
+- [User Personas](overview/product_personas) - Target user profiles and use cases
+- [User Stories](overview/product_user_stories) - Detailed feature requirements
+- [User Journeys](overview/product_user_journeys) - End-to-end user flows
 
 ### [Architecture](architecture/)
 Technical architecture, system design, and implementation details.
 
-- [Architecture Overview](architecture/architecture_overview.html) - High-level system design
-- [Architecture Views](architecture/architecture_views.html) - Detailed technical diagrams
-- [External Data Sources](architecture/architecture_external_data_sources.html) - Threat intelligence integration
+- [Architecture Overview](architecture/architecture_overview) - High-level system design
+- [Architecture Views](architecture/architecture_views) - Detailed technical diagrams
+- [External Data Sources](architecture/external_data_sources) - Threat intelligence integration
 
 ### [Specifications](specifications/)
 Comprehensive technical specifications for all system components.
 
-- [Detection & Scoring](specifications/product_detection_and_scoring_spec.html) - Core detection algorithms
-- [Reporting & Admin](specifications/product_reporting_and_admin_spec.html) - Report handling and administration
-- [Performance Requirements](specifications/performance_requirements.html) - Resource budgets and optimization
-- [Accessibility & i18n](specifications/accessibility_internationalization.html) - Inclusive design requirements
-- [Error Handling](specifications/error_handling_recovery.html) - Resilience and recovery procedures
-- [Lifecycle Management](specifications/extension_lifecycle_management.html) - Development and deployment
-- [Testing Strategy](specifications/testing_quality_assurance.html) - Quality assurance methodology
-- [Developer Experience](specifications/developer_experience.html) - Development tools and processes
-- [Operational Runbooks](specifications/operational_runbooks.html) - Operations and maintenance
+- [Detection & Scoring](specifications/detection_and_scoring) - Core detection algorithms
+- [Reporting & Admin](specifications/reporting_and_admin) - Report handling and administration
+- [Performance Requirements](specifications/performance_requirements) - Resource budgets and optimization
+- [Accessibility & i18n](specifications/accessibility_internationalization) - Inclusive design requirements
+- [Error Handling](specifications/error_handling_recovery) - Resilience and recovery procedures
+- [Lifecycle Management](specifications/lifecycle_management) - Development and deployment
+- [Testing Strategy](specifications/testing_and_qa) - Quality assurance methodology
+- [Developer Experience](specifications/developer_experience) - Development tools and processes
+- [Operational Runbooks](specifications/operational_runbooks) - Operations and maintenance
 
 ### [Admin Interface](admin/)
 Administration tools and interfaces for managing the system.
 
-- [Admin Interface](admin/product_admin_interface.html) - Administrative console design
+- [Admin Interface](admin/admin_interface) - Administrative console design
 
 ## 🔒 Privacy by Design
 
