@@ -77,6 +77,8 @@ exclude:
   - _sass/
   - _layouts/
   - _includes/
+  - definitions/
+  - README.md
 
 # Include files
 include:
