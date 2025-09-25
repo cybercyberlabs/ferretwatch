@@ -11,15 +11,15 @@ source "https://rubygems.org"
 gem "jekyll", "~> 4.3.2"
 # Modern documentation theme
 gem "just-the-docs", "0.7.0"
-# If you want to use GitHub Pages, remove the "gem "jekyll"" above and
-# uncomment the line below. To upgrade, run `bundle update github-pages`.
-gem "github-pages", "~> 228", group: :jekyll_plugins
 # If you have any plugins, put them here!
 group :jekyll_plugins do
   gem "jekyll-feed", "~> 0.12"
   gem "jekyll-sitemap"
   gem "jekyll-seo-tag"
 end
+
+# Additional gems for GitHub Actions
+gem "webrick", "~> 1.8"
 
 # Windows and JRuby does not include zoneinfo files, so bundle the tzinfo-data gem
 # and associated library.
