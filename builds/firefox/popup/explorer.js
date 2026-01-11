@@ -27,8 +27,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.querySelector('.empty-state').textContent = 'Error: No target tab specified.';
     }
 
+    // Load saved exclude filter
+    loadExcludeFilter();
+
     // Event Listeners
     document.getElementById('endpoint-filter').addEventListener('input', filterEndpoints);
+    document.getElementById('exclude-filter').addEventListener('input', (e) => {
+        filterEndpoints(e);
+        saveExcludeFilter();
+    });
     document.getElementById('btn-clear-all').addEventListener('click', clearAllEndpoints);
     document.getElementById('btn-replay').addEventListener('click', replayRequest);
     document.getElementById('btn-copy-curl').addEventListener('click', copyAsCurl);
@@ -201,12 +208,26 @@ function selectEndpoint(index) {
 }
 
 function filterEndpoints(e) {
-    const term = e.target.value.toLowerCase();
+    const includeTerm = document.getElementById('endpoint-filter').value.toLowerCase();
+    const excludeTerms = document.getElementById('exclude-filter').value
+        .toLowerCase()
+        .split(',')
+        .map(term => term.trim())
+        .filter(term => term.length > 0);
+
     const items = document.querySelectorAll('.endpoint-item');
 
     items.forEach(item => {
         const text = item.textContent.toLowerCase();
-        item.style.display = text.includes(term) ? 'flex' : 'none';
+
+        // Check if matches include filter
+        const matchesInclude = !includeTerm || text.includes(includeTerm);
+
+        // Check if matches any exclude filter
+        const matchesExclude = excludeTerms.some(excludeTerm => text.includes(excludeTerm));
+
+        // Show if matches include AND doesn't match any exclude
+        item.style.display = (matchesInclude && !matchesExclude) ? 'flex' : 'none';
     });
 }
 
@@ -1443,6 +1464,30 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-run-auto-scan')?.addEventListener('click', runAutoScanAll);
     document.getElementById('btn-auto-scan')?.addEventListener('click', runAutoScanCurrent);
 });
+
+/**
+ * Save exclude filter to storage
+ */
+function saveExcludeFilter() {
+    const excludeValue = document.getElementById('exclude-filter').value;
+    browser.storage.local.set({ excludeFilter: excludeValue });
+}
+
+/**
+ * Load exclude filter from storage
+ */
+async function loadExcludeFilter() {
+    try {
+        const result = await browser.storage.local.get('excludeFilter');
+        if (result.excludeFilter) {
+            document.getElementById('exclude-filter').value = result.excludeFilter;
+            // Trigger filtering with loaded value
+            filterEndpoints();
+        }
+    } catch (err) {
+        console.error('[Explorer] Failed to load exclude filter:', err);
+    }
+}
 
 // polyfill for browser namespace if chrome
 if (typeof browser === 'undefined' && typeof chrome !== 'undefined') {

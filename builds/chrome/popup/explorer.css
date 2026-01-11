@@ -119,18 +119,19 @@ body {
 .filter-bar {
     padding: 10px;
     display: flex;
+    flex-direction: column;
     gap: 8px;
-    align-items: center;
 }
 
 .filter-bar input {
-    flex: 1;
+    width: 100%;
     padding: 8px 12px;
     background: var(--bg-color);
     border: 1px solid var(--border);
     border-radius: 6px;
     color: white;
     outline: none;
+    box-sizing: border-box;
 }
 
 .filter-bar input:focus {
