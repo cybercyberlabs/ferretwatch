@@ -13,8 +13,16 @@
   "permissions": [
     "<all_urls>",
     "storage",
-    "activeTab"
+    "storage",
+    "activeTab",
+    "webRequest",
+    "webRequestBlocking"
   ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
   "browser_action": {
     "default_title": "FerretWatch",
     "default_popup": "popup/popup.html",
@@ -43,6 +51,10 @@
       ],
       "run_at": "document_end"
     }
+  ],
+  "web_accessible_resources": [
+    "utils/network-interceptor.js",
+    "utils/main-world-proxy.js"
   ],
   "browser_specific_settings": {
     "gecko": {

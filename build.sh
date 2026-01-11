@@ -127,8 +127,10 @@ create_chrome_manifest() {
             .action = .browser_action |
             del(.browser_action) |
             .host_permissions = .permissions |
-            .permissions = ["storage", "activeTab"]' \
+            .permissions = ["storage", "activeTab", "scripting"] |
+            .web_accessible_resources = [{"resources": .web_accessible_resources, "matches": ["<all_urls>"]}]' \
             manifest.json > "$target_dir/manifest.json"
+
     else
         # Fallback: use manifest-v3.json if available
         if [[ -f "manifest-v3.json" ]]; then

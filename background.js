@@ -10,27 +10,31 @@
 class BackgroundService {
     constructor() {
         this.tabResults = new Map();
+        this.apiEndpoints = new Map(); // Store API endpoints per tab
         this.settings = null;
+
         this.init();
     }
 
-    async init() {
+    init() {
         console.log('🔧 Background service worker initializing...');
-        
-        // Load settings
-        await this.loadSettings();
-        
-        // Set up listeners
+
+        // Set up listeners immediately (Synchronous)
         this.setupMessageListeners();
         this.setupStorageListeners();
         this.setupTabListeners();
-        
-        console.log('✅ Background service worker ready');
+
+        // Load settings (Async)
+        this.loadSettings().then(() => {
+            console.log('✅ Background service worker ready');
+        });
     }
+
 
     async loadSettings() {
         try {
-            const result = await chrome.storage.local.get('userSettings');
+            const api = typeof browser !== 'undefined' ? browser : chrome;
+            const result = await api.storage.local.get('userSettings');
             this.settings = result.userSettings || this.getDefaultSettings();
         } catch (error) {
             console.error('Failed to load settings:', error);
@@ -70,6 +74,9 @@ class BackgroundService {
         });
     }
 
+
+
+
     async handleMessage(message, sender, sendResponse) {
         try {
             switch (message.type) {
@@ -104,6 +111,27 @@ class BackgroundService {
 
                 case 'SHOW_NOTIFICATION':
                     await this.showNotification(message.data);
+                    sendResponse({ success: true });
+                    break;
+
+                case 'API_CALL_CAPTURED':
+                    this.handleApiCall(message.data, sender.tab?.id);
+                    sendResponse({ success: true });
+                    break;
+
+                case 'PROXY_REQUEST':
+                    // Must return true to keep channel open for async fetch
+                    this.handleProxyRequest(message.data, message.tabId).then(sendResponse);
+                    return true;
+
+
+                case 'GET_API_ENDPOINTS':
+                    const endpoints = this.apiEndpoints.get(message.tabId) || [];
+                    sendResponse({ endpoints });
+                    break;
+
+                case 'CLEAR_API_ENDPOINTS':
+                    this.apiEndpoints.set(message.tabId, []);
                     sendResponse({ success: true });
                     break;
 
@@ -145,14 +173,175 @@ class BackgroundService {
         await this.updateBadge(tabId, newResults.length);
     }
 
+    handleApiCall(apiData, tabId) {
+        if (!tabId) return;
+
+        const currentEndpoints = this.apiEndpoints.get(tabId) || [];
+
+        // Check if we already have this endpoint (deduplication)
+        // We consider an endpoint unique by Method + URL
+        const exists = currentEndpoints.some(e => e.method === apiData.method && e.url === apiData.url);
+
+        if (!exists) {
+            currentEndpoints.push(apiData);
+            this.apiEndpoints.set(tabId, currentEndpoints);
+
+            // Notify any open API Explorer tabs about the new endpoint
+            this.notifyExplorerTabs(tabId, apiData);
+        }
+    }
+
+    /**
+     * Notify all API Explorer tabs that are watching a specific tab about new API calls
+     */
+    async notifyExplorerTabs(sourceTabId, newEndpoint) {
+        try {
+            // Query all tabs to find any that are API Explorer pages
+            const allTabs = await (typeof browser !== 'undefined' ? browser : chrome).tabs.query({});
+
+            for (const tab of allTabs) {
+                // Check if this is an explorer page for the source tab
+                if (tab.url && tab.url.includes('popup/explorer.html') && tab.url.includes(`tabId=${sourceTabId}`)) {
+                    // Send update to the explorer tab
+                    (typeof browser !== 'undefined' ? browser : chrome).tabs.sendMessage(tab.id, {
+                        type: 'NEW_API_ENDPOINT',
+                        tabId: sourceTabId,
+                        endpoint: newEndpoint
+                    }).catch(err => {
+                        // Explorer might not be ready yet, that's fine
+                        console.debug('Could not notify explorer tab:', err.message);
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error notifying explorer tabs:', error);
+        }
+    }
+
+    async handleProxyRequest(requestData, specifiedTabId) {
+        try {
+            console.log('🔄 [Background] Forwarding proxy request to Content Script');
+            console.log('🔄 [Background] Request data:', requestData);
+            console.log('🔄 [Background] Target tab ID:', specifiedTabId);
+            const api = typeof browser !== 'undefined' ? browser : chrome;
+
+            let activeTab;
+
+            if (specifiedTabId) {
+                try {
+                    activeTab = await api.tabs.get(specifiedTabId);
+                    console.log('✅ [Background] Found specified tab:', activeTab.id, activeTab.url);
+                } catch (e) {
+                    console.warn(`⚠️ [Background] Specified tab ${specifiedTabId} not found:`, e.message);
+                }
+            }
+
+            if (!activeTab) {
+                // Find the active tab to execute the request in
+                const tabs = await api.tabs.query({ active: true, currentWindow: true });
+                if (!tabs || tabs.length === 0) {
+                    console.error('❌ [Background] No active tab found');
+                    throw new Error('No active tab found to execute request');
+                }
+                activeTab = tabs[0];
+                console.log('📍 [Background] Using active tab:', activeTab.id, activeTab.url);
+            }
+
+            console.log(`🎯 [Background] Target Tab: ID=${activeTab.id}, URL=${activeTab.url}`);
+
+            // Check if URL is restricted (no content script)
+            if (activeTab.url.startsWith('chrome://') || activeTab.url.startsWith('edge://') || activeTab.url.startsWith('about:') || activeTab.url.startsWith('moz-extension://')) {
+                console.warn('⚠️ [Background] Target tab is a restricted page. Content script likely missing.');
+                throw new Error('Cannot inject content script into restricted page');
+            }
+
+            // Helper to send message
+            const sendMessageToTab = async () => {
+                console.log('📤 [Background] Sending executeRequest to tab', activeTab.id);
+                const response = await api.tabs.sendMessage(activeTab.id, {
+                    action: 'executeRequest',
+                    data: requestData
+                });
+                console.log('📥 [Background] Received response from content script:', response);
+                return response;
+            };
+
+            try {
+                // Try sending message first
+                const result = await sendMessageToTab();
+                console.log('✅ [Background] Proxy request successful');
+                return result;
+            } catch (error) {
+                console.error('❌ [Background] sendMessage failed:', error.message);
+
+                // Check if error is "Receiving end does not exist" or similar
+                const isConnectionError = error.message.includes('Receiving end does not exist') ||
+                    error.message.includes('Could not establish connection');
+
+                if (isConnectionError && !activeTab.url.startsWith('about:') && !activeTab.url.startsWith('chrome')) {
+                    console.log('⚠️ [Background] Content script disconnected. Attempting lazy injection...');
+
+                    // Inject script dependencies in order
+                    const scripts = [
+                        "config/patterns.js",
+                        "utils/storage.js",
+                        "utils/context.js",
+                        "utils/bucket-parser.js",
+                        "utils/bucket-tester.js",
+                        "utils/settings.js",
+                        "utils/scanner.js",
+                        "content.js"
+                    ];
+
+                    for (const file of scripts) {
+                        try {
+                            console.log(`💉 [Background] Injecting ${file}...`);
+                            if (api.scripting) {
+                                await api.scripting.executeScript({
+                                    target: { tabId: activeTab.id },
+                                    files: [file]
+                                });
+                            } else {
+                                // MV2 fallback
+                                await api.tabs.executeScript(activeTab.id, { file: file });
+                            }
+                        } catch (injectError) {
+                            console.error(`❌ [Background] Failed to inject ${file}:`, injectError);
+                        }
+                    }
+
+                    // Wait a moment for script to init
+                    await new Promise(r => setTimeout(r, 500));
+
+                    console.log('🔄 [Background] Retrying proxy request after injection...');
+                    const result = await sendMessageToTab();
+                    console.log('✅ [Background] Retry successful');
+                    return result;
+
+                } else {
+                    throw error;
+                }
+            }
+
+        } catch (error) {
+            console.error('❌ [Background] Proxy forwarding failed:', error);
+            return {
+                success: false,
+                error: `Proxy Error: ${error.message}`
+            };
+        }
+    }
+
+
     async updateSettings(newSettings) {
+
         // Validate settings before updating
         const validatedSettings = this.validateSettings(newSettings);
         this.settings = { ...this.settings, ...validatedSettings };
-        
+
         try {
             await chrome.storage.local.set({ userSettings: this.settings });
-            
+
             // Broadcast settings update to all tabs
             const tabs = await chrome.tabs.query({});
             for (const tab of tabs) {
@@ -173,16 +362,16 @@ class BackgroundService {
 
     validateSettings(settings) {
         const validated = { ...settings };
-        
+
         // Validate cloud bucket scanning settings
         if (validated.cloudBucketScanning) {
             const bucketSettings = validated.cloudBucketScanning;
-            
+
             // Ensure enabled is boolean
             if (typeof bucketSettings.enabled !== 'boolean') {
                 bucketSettings.enabled = true;
             }
-            
+
             // Validate providers object
             if (!bucketSettings.providers || typeof bucketSettings.providers !== 'object') {
                 bucketSettings.providers = {
@@ -201,27 +390,27 @@ class BackgroundService {
                     }
                 });
             }
-            
+
             // Validate timeout (must be positive integer between 1000 and 30000)
-            if (typeof bucketSettings.testTimeout !== 'number' || 
-                bucketSettings.testTimeout < 1000 || 
+            if (typeof bucketSettings.testTimeout !== 'number' ||
+                bucketSettings.testTimeout < 1000 ||
                 bucketSettings.testTimeout > 30000) {
                 bucketSettings.testTimeout = 5000;
             }
-            
+
             // Validate max concurrent tests (must be positive integer between 1 and 10)
-            if (typeof bucketSettings.maxConcurrentTests !== 'number' || 
-                bucketSettings.maxConcurrentTests < 1 || 
+            if (typeof bucketSettings.maxConcurrentTests !== 'number' ||
+                bucketSettings.maxConcurrentTests < 1 ||
                 bucketSettings.maxConcurrentTests > 10) {
                 bucketSettings.maxConcurrentTests = 3;
             }
-            
+
             // Ensure testPublicAccess is boolean
             if (typeof bucketSettings.testPublicAccess !== 'boolean') {
                 bucketSettings.testPublicAccess = true;
             }
         }
-        
+
         return validated;
     }
 
@@ -238,12 +427,12 @@ class BackgroundService {
 
         try {
             const notificationId = await chrome.notifications.create(options);
-            
+
             // Auto-clear notification after delay
             setTimeout(() => {
                 chrome.notifications.clear(notificationId);
             }, 5000);
-            
+
         } catch (error) {
             console.error('Failed to show notification:', error);
         }
@@ -275,20 +464,24 @@ class BackgroundService {
         // Clear results when tab is removed
         chrome.tabs.onRemoved.addListener((tabId) => {
             this.tabResults.delete(tabId);
+            this.apiEndpoints.delete(tabId);
         });
+
 
         // Clear badge when tab is updated (navigation)
         chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
             if (changeInfo.status === 'loading') {
                 this.tabResults.delete(tabId);
+                this.apiEndpoints.delete(tabId);
                 this.updateBadge(tabId, 0);
             }
+
         });
     }
 
     async getSessionData() {
         const sessionResults = [];
-        
+
         // Collect results from all tabs
         for (const [tabId, results] of this.tabResults.entries()) {
             try {
@@ -329,25 +522,25 @@ class ChromeAPIAdapter {
                 },
                 storage: {
                     local: {
-                        get: (keys) => new Promise(resolve => 
+                        get: (keys) => new Promise(resolve =>
                             chrome.storage.local.get(keys, resolve)
                         ),
-                        set: (items) => new Promise(resolve => 
+                        set: (items) => new Promise(resolve =>
                             chrome.storage.local.set(items, resolve)
                         )
                     },
                     onChanged: chrome.storage.onChanged
                 },
                 tabs: {
-                    query: (queryInfo) => new Promise(resolve => 
+                    query: (queryInfo) => new Promise(resolve =>
                         chrome.tabs.query(queryInfo, resolve)
                     ),
-                    sendMessage: (tabId, message) => new Promise(resolve => 
+                    sendMessage: (tabId, message) => new Promise(resolve =>
                         chrome.tabs.sendMessage(tabId, message, resolve)
                     )
                 },
                 notifications: {
-                    create: (options) => new Promise(resolve => 
+                    create: (options) => new Promise(resolve =>
                         chrome.notifications.create(options, resolve)
                     ),
                     clear: chrome.notifications.clear.bind(chrome.notifications)
@@ -387,15 +580,96 @@ self.addEventListener('activate', (event) => {
     );
 });
 
+// TOP-LEVEL WEB REQUEST LISTENER FOR PROXY SPOOFING
+// Stores URLs that are currently being proxied to allow Preflight (OPTIONS) spoofing
+const activeProxyTargets = new Set();
+// Expose for BackgroundService to use
+self.activeProxyTargets = activeProxyTargets;
+
+(function () {
+    try {
+        const api = typeof browser !== 'undefined' ? browser : chrome;
+        const webRequest = api.webRequest || (typeof chrome !== 'undefined' ? chrome.webRequest : null);
+
+        if (webRequest && webRequest.onBeforeSendHeaders) {
+            console.log('✅ [TOP-LEVEL] Setting up webRequest listener');
+            webRequest.onBeforeSendHeaders.addListener(
+                (details) => {
+                    let hasProxyMarker = false;
+                    const headers = details.requestHeaders || [];
+
+                    // Check for marker and remove it
+                    for (let i = 0; i < headers.length; i++) {
+                        if (headers[i].name === 'X-FW-Proxy') {
+                            hasProxyMarker = true;
+                            headers.splice(i, 1); // Remove marker
+                            console.log('🎯 [PROXY] Intercepted request with marker:', details.url);
+                            break;
+                        }
+                    }
+
+                    // Check if this URL is in our active proxy list (for Preflight/OPTIONS)
+                    const isTarget = activeProxyTargets.has(details.url);
+
+                    if (hasProxyMarker || isTarget) {
+                        const targetUrl = new URL(details.url);
+                        const origin = targetUrl.origin;
+
+                        if (isTarget && !hasProxyMarker) {
+                            console.log(`🔎 [PROXY] Intercepted Preflight/Related request: ${details.method} ${details.url}`);
+                        }
+
+                        // Rewrite Origin
+                        let originFound = false;
+                        for (const h of headers) {
+                            if (h.name.toLowerCase() === 'origin') {
+                                console.log(`🔄 [PROXY] Rewriting Origin: ${h.value} -> ${origin}`);
+                                h.value = origin;
+                                originFound = true;
+                            } else if (h.name.toLowerCase() === 'referer') {
+                                console.log(`🔄 [PROXY] Rewriting Referer: ${h.value} -> ${targetUrl.href}`);
+                                h.value = targetUrl.href;
+                            }
+                        }
+
+                        if (!originFound) {
+                            console.log(`➕ [PROXY] Adding Origin: ${origin}`);
+                            headers.push({ name: 'Origin', value: origin });
+                            // Also ensure Referer is set if not present
+                            if (!headers.some(h => h.name.toLowerCase() === 'referer')) {
+                                headers.push({ name: 'Referer', value: targetUrl.href });
+                            }
+                        }
+
+                        return { requestHeaders: headers };
+                    }
+                },
+                { urls: ["<all_urls>"] },
+                // Firefox doesn't support "extraHeaders", Chrome needs it for some headers
+                typeof browser !== 'undefined'
+                    ? ["blocking", "requestHeaders"]  // Firefox
+                    : ["blocking", "requestHeaders", "extraHeaders"]  // Chrome
+            );
+        } else {
+            console.error('❌ [TOP-LEVEL] webRequest API not available!');
+        }
+    } catch (e) {
+        console.error('❌ [TOP-LEVEL] CRITICAL ERROR during webRequest setup:', e);
+    }
+})();
+
 // Initialize background service
 let backgroundService = null;
 
+
 // Initialize when service worker starts
-if (isChromeExtension()) {
+// Initialize when service worker starts
+try {
     backgroundService = new BackgroundService();
-} else {
-    console.error('❌ Not running in Chrome extension context');
+} catch (e) {
+    console.error('❌ Failed to initialize background service:', e);
 }
+
 
 // Handle service worker wakeup
 chrome.runtime.onStartup.addListener(() => {

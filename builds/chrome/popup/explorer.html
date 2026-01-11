@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>FerretWatch API Explorer</title>
+    <link rel="stylesheet" href="explorer.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="main-header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="../icons/icon-48.png" alt="Logo">
+                    <h1>FerretWatch API Explorer</h1>
+                </div>
+                <div class="target-info">
+                    Scanning: <span id="target-url">Loading...</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="content-wrapper">
+            <!-- Sidebar: Endpoint List -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Discovered Endpoints</h2>
+                    <span id="endpoint-count" class="badge">0</span>
+                </div>
+                <div class="filter-bar">
+                    <input type="text" id="endpoint-filter" placeholder="Filter endpoints...">
+                    <button id="btn-clear-all" class="btn-clear" title="Clear all endpoints">Clear All</button>
+                </div>
+                <div id="endpoint-list" class="endpoint-list">
+                    <!-- Endpoints will be injected here -->
+                    <div class="empty-state">No API calls detected yet.</div>
+                </div>
+            </aside>
+
+            <!-- Main Area: Details & Actions -->
+            <section class="main-panel">
+                <div id="default-view" class="empty-view">
+                    <div class="icon">🔍</div>
+                    <h2>Select an endpoint to analyze</h2>
+                    <p>FerretWatch captures network requests made by the target page.</p>
+                </div>
+
+                <div id="detail-view" class="detail-view hidden">
+                    <div class="request-header">
+                        <div class="method-badge" id="detail-method">GET</div>
+                        <input type="text" class="url-input" id="detail-url" placeholder="URL" />
+                    </div>
+
+                    <div class="action-bar">
+                        <button id="btn-replay" class="btn primary">
+                            <span class="icon">▶</span> Replay Request
+                        </button>
+                        <button id="btn-copy-curl" class="btn secondary">
+                            <span class="icon">📋</span> Copy as cURL
+                        </button>
+                        <button id="btn-test-auth" class="btn warning">
+                            <span class="icon">🔓</span> Test Broken Auth
+                        </button>
+                    </div>
+
+                    <div class="panels-container">
+                        <!-- Request Details -->
+                        <div class="panel">
+                            <h3>Request Headers</h3>
+                            <pre id="detail-headers" class="code-block"></pre>
+                            
+                            <h3 id="body-heading" class="hidden">Request Body</h3>
+                            <pre id="detail-body" class="code-block hidden"></pre>
+                        </div>
+
+                        <!-- Response / Test Results -->
+                        <div class="panel results-panel">
+                            <h3>Analysis Result</h3>
+                            <div id="analysis-output" class="analysis-output">
+                                <div class="placeholder">Run a test to see results...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="explorer.js"></script>
+</body>
+</html>
