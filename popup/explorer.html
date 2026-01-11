@@ -30,6 +30,9 @@
                         <button class="tab-btn" data-tab="unused">
                             Unused <span id="unused-count" class="badge">0</span>
                         </button>
+                        <button class="tab-btn" data-tab="vulns">
+                            Vulns <span id="vulns-count" class="badge">0</span>
+                        </button>
                     </div>
                 </div>
                 <div class="filter-bar">
@@ -56,6 +59,21 @@
                         </div>
                         <div id="scan-stats" class="scan-stats hidden">
                             <!-- Stats will be shown here -->
+                        </div>
+                    </div>
+                    <div id="vulns-tab" class="tab-pane">
+                        <div id="vuln-prompt" class="scan-prompt">
+                            <div class="icon">🔒</div>
+                            <p>Run automated security tests on discovered endpoints</p>
+                            <button id="btn-run-auto-scan" class="btn primary">
+                                <span class="icon">🤖</span> Run Auto Scan
+                            </button>
+                        </div>
+                        <div id="vuln-list" class="endpoint-list hidden">
+                            <!-- Vulnerabilities will be injected here -->
+                        </div>
+                        <div id="vuln-stats" class="scan-stats hidden">
+                            <!-- Vulnerability stats will be shown here -->
                         </div>
                     </div>
                 </div>
@@ -85,6 +103,9 @@
                         <button id="btn-test-auth" class="btn warning">
                             <span class="icon">🔓</span> Test Broken Auth
                         </button>
+                        <button id="btn-auto-scan" class="btn secondary">
+                            <span class="icon">🤖</span> Auto Scan All
+                        </button>
                     </div>
 
                     <div class="panels-container">
@@ -92,9 +113,9 @@
                         <div class="panel">
                             <h3>Request Headers</h3>
                             <pre id="detail-headers" class="code-block"></pre>
-                            
+
                             <h3 id="body-heading" class="hidden">Request Body</h3>
-                            <pre id="detail-body" class="code-block hidden"></pre>
+                            <textarea id="detail-body" class="code-block editable hidden" rows="10"></textarea>
                         </div>
 
                         <!-- Response / Test Results -->

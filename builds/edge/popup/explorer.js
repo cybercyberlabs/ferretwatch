@@ -184,12 +184,12 @@ function selectEndpoint(index) {
             try {
                 // Try to prettify JSON body
                 const json = JSON.parse(currentEndpoint.body);
-                bodyEl.textContent = JSON.stringify(json, null, 2);
+                bodyEl.value = JSON.stringify(json, null, 2);
             } catch {
-                bodyEl.textContent = currentEndpoint.body;
+                bodyEl.value = currentEndpoint.body;
             }
         } else {
-            bodyEl.textContent = JSON.stringify(currentEndpoint.body, null, 2);
+            bodyEl.value = JSON.stringify(currentEndpoint.body, null, 2);
         }
     } else {
         document.getElementById('body-heading').classList.add('hidden');
@@ -265,8 +265,12 @@ async function replayRequest() {
     // Get the URL from the input field (may be edited)
     const url = document.getElementById('detail-url').value;
 
+    // Get the body from the textarea (may be edited)
+    const bodyEl = document.getElementById('detail-body');
+    const body = bodyEl.value || currentEndpoint.body;
+
     // Generate and display curl command
-    const curlCommand = generateCurlCommand(url, currentEndpoint.method, currentEndpoint.headers, currentEndpoint.body);
+    const curlCommand = generateCurlCommand(url, currentEndpoint.method, currentEndpoint.headers, body);
     displayCurlCommand(curlCommand);
 
     try {
@@ -276,7 +280,7 @@ async function replayRequest() {
             url,
             currentEndpoint.method,
             currentEndpoint.headers,
-            currentEndpoint.body
+            body
         );
 
         const duration = Date.now() - start;
@@ -511,6 +515,13 @@ function clearAllEndpoints() {
  * @returns {string} cURL command
  */
 function generateCurlCommand(url, method, headers, body) {
+    // Auto-correct method if body is present but method is GET
+    // GET requests cannot have bodies per HTTP spec
+    if (body && method.toUpperCase() === 'GET') {
+        console.warn(`[cURL] GET request with body detected - auto-correcting to POST`);
+        method = 'POST';
+    }
+
     let curl = `curl -X ${method} '${url}'`;
 
     // Add headers
@@ -522,7 +533,7 @@ function generateCurlCommand(url, method, headers, body) {
         }
     }
 
-    // Add body if present
+    // Add body if present (excluding GET/HEAD which shouldn't have bodies)
     if (body && !['GET', 'HEAD'].includes(method.toUpperCase())) {
         const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
         // Escape single quotes in body
@@ -616,7 +627,7 @@ function copyAsCurl() {
 }
 
 /**
- * Switch between Called and Unused tabs
+ * Switch between Called, Unused, and Vulns tabs
  */
 function switchTab(tabName) {
     activeTab = tabName;
@@ -635,6 +646,8 @@ function switchTab(tabName) {
         document.getElementById('called-tab').classList.add('active');
     } else if (tabName === 'unused') {
         document.getElementById('unused-tab').classList.add('active');
+    } else if (tabName === 'vulns') {
+        document.getElementById('vulns-tab').classList.add('active');
     }
 }
 
@@ -810,8 +823,15 @@ function selectUnusedEndpoint(index) {
     });
 
     // Create endpoint object with detected method and payload
-    const detectedMethod = endpoint.method || 'GET';
+    let detectedMethod = endpoint.method || 'GET';
     const detectedBody = endpoint.payload ? JSON.stringify(endpoint.payload, null, 2) : null;
+
+    // IMPORTANT: If there's a body but method is GET, auto-correct to POST
+    // GET requests cannot have a body, so this is likely a misdetection
+    if (detectedBody && detectedMethod.toUpperCase() === 'GET') {
+        console.log(`[Explorer] Auto-correcting method from GET to POST for endpoint with body: ${endpoint.url}`);
+        detectedMethod = 'POST';
+    }
 
     // Use resolvedUrl if available (handles cross-origin scripts), otherwise use original url
     const targetUrl = endpoint.resolvedUrl || endpoint.url;
@@ -844,7 +864,7 @@ function selectUnusedEndpoint(index) {
     if (detectedBody) {
         document.getElementById('body-heading').classList.remove('hidden');
         document.getElementById('detail-body').classList.remove('hidden');
-        document.getElementById('detail-body').textContent = detectedBody;
+        document.getElementById('detail-body').value = detectedBody;
     } else {
         document.getElementById('body-heading').classList.add('hidden');
         document.getElementById('detail-body').classList.add('hidden');
@@ -891,6 +911,538 @@ function selectUnusedEndpoint(index) {
         </div>
     `;
 }
+
+/**
+ * Run automated security scan on all endpoints
+ */
+let vulnerabilities = [];
+let isScanning = false;
+
+async function runAutoScanAll() {
+    if (!currentTabId) {
+        alert('Error: No target tab specified');
+        return;
+    }
+
+    if (apiEndpoints.length === 0) {
+        alert('No endpoints to scan. Discover some endpoints first.');
+        return;
+    }
+
+    if (isScanning) {
+        alert('Scan already in progress');
+        return;
+    }
+
+    isScanning = true;
+    vulnerabilities = [];
+
+    const btn = document.getElementById('btn-run-auto-scan');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="icon">⏳</span> Scanning...';
+    btn.disabled = true;
+
+    // Show progress
+    const prompt = document.getElementById('vuln-prompt');
+    prompt.innerHTML = `
+        <div class="scan-progress">
+            <div class="icon">🤖</div>
+            <p>Running automated security tests...</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="scan-progress-fill" style="width: 0%"></div>
+            </div>
+            <p id="scan-status">Initializing...</p>
+        </div>
+    `;
+
+    try {
+        const total = apiEndpoints.length;
+        let completed = 0;
+
+        for (const endpoint of apiEndpoints) {
+            completed++;
+            const progress = Math.round((completed / total) * 100);
+
+            document.getElementById('scan-progress-fill').style.width = `${progress}%`;
+            document.getElementById('scan-status').textContent = `Testing ${completed}/${total}: ${endpoint.url}`;
+
+            // Test this endpoint
+            const vulns = await testEndpointSecurity(endpoint);
+            vulnerabilities.push(...vulns);
+        }
+
+        // Update UI
+        renderVulnerabilities(vulnerabilities);
+        displayVulnStats(vulnerabilities);
+
+        // Update badge count
+        document.getElementById('vulns-count').textContent = vulnerabilities.length;
+
+        // Hide prompt, show results
+        prompt.classList.add('hidden');
+        document.getElementById('vuln-list').classList.remove('hidden');
+        document.getElementById('vuln-stats').classList.remove('hidden');
+
+        if (vulnerabilities.length > 0) {
+            // Switch to vulns tab to show results
+            switchTab('vulns');
+
+            // Show notification
+            alert(`⚠️ Auto Scan Complete!\n\nFound ${vulnerabilities.length} potential vulnerabilities.\nReview them in the Vulns tab.`);
+        } else {
+            alert(`✅ Auto Scan Complete!\n\nNo vulnerabilities found. All endpoints appear to be properly secured.`);
+        }
+
+    } catch (error) {
+        console.error('[AutoScan] Scan failed:', error);
+        alert('Auto scan failed: ' + error.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        isScanning = false;
+    }
+}
+
+/**
+ * Run automated security scan on the current endpoint only
+ */
+async function runAutoScanCurrent() {
+    if (!currentEndpoint) {
+        alert('No endpoint selected');
+        return;
+    }
+
+    if (isScanning) {
+        alert('Scan already in progress');
+        return;
+    }
+
+    isScanning = true;
+
+    const btn = document.getElementById('btn-auto-scan');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="icon">⏳</span> Scanning...';
+    btn.disabled = true;
+
+    logAnalysis('Running automated security tests on this endpoint...', 'info');
+
+    try {
+        // Get the URL from the input field (may be edited)
+        const url = document.getElementById('detail-url').value;
+
+        // Create endpoint object with current values
+        const endpointToTest = {
+            ...currentEndpoint,
+            url: url
+        };
+
+        // Test this endpoint
+        const vulns = await testEndpointSecurity(endpointToTest);
+
+        if (vulns.length > 0) {
+            logAnalysis(`⚠️ Found ${vulns.length} potential ${vulns.length === 1 ? 'vulnerability' : 'vulnerabilities'}:`, 'failure');
+
+            vulns.forEach((vuln, index) => {
+                logAnalysis(`\n${index + 1}. ${vuln.title} [${vuln.severity}]`, 'failure');
+                logAnalysis(`   Type: ${vuln.type.replace('_', ' ')}`, 'info');
+                logAnalysis(`   ${vuln.description}`, 'info');
+                if (vuln.evidence) {
+                    logAnalysis(`   Evidence: ${JSON.stringify(vuln.evidence, null, 2)}`, 'info');
+                }
+            });
+
+            // Add vulnerabilities to global list
+            vulnerabilities.push(...vulns);
+            document.getElementById('vulns-count').textContent = vulnerabilities.length;
+
+            logAnalysis('\n💡 View all vulnerabilities in the "Vulns" tab', 'info');
+        } else {
+            logAnalysis('✅ No vulnerabilities found! This endpoint appears to be properly secured.', 'success');
+        }
+
+    } catch (error) {
+        console.error('[AutoScan] Scan failed:', error);
+        logAnalysis(`Scan failed: ${error.message}`, 'failure');
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        isScanning = false;
+    }
+}
+
+/**
+ * Test an individual endpoint for security vulnerabilities
+ * @param {Object} endpoint - Endpoint to test
+ * @returns {Promise<Array>} Array of vulnerabilities found
+ */
+async function testEndpointSecurity(endpoint) {
+    const vulns = [];
+
+    try {
+        // Test 1: Broken Authentication
+        const authVuln = await testBrokenAuthAuto(endpoint);
+        if (authVuln) vulns.push(authVuln);
+
+        // Test 2: IDOR
+        const idorVulns = await testIDORAuto(endpoint);
+        vulns.push(...idorVulns);
+
+        // Test 3: Method Bypass
+        const methodVulns = await testMethodBypassAuto(endpoint);
+        vulns.push(...methodVulns);
+
+    } catch (error) {
+        console.debug('[AutoScan] Error testing endpoint:', endpoint.url, error);
+    }
+
+    return vulns;
+}
+
+/**
+ * Test endpoint for broken authentication (automated)
+ */
+async function testBrokenAuthAuto(endpoint) {
+    try {
+        const authHeaders = ['authorization', 'x-api-key', 'token', 'access-token', 'cookie', 'session'];
+        const cleanHeaders = {};
+        let hasAuth = false;
+
+        for (const [key, value] of Object.entries(endpoint.headers || {})) {
+            if (!authHeaders.includes(key.toLowerCase())) {
+                cleanHeaders[key] = value;
+            } else {
+                hasAuth = true;
+            }
+        }
+
+        if (!hasAuth) return null;
+
+        const response = await sendProxyRequest(endpoint.url, endpoint.method, cleanHeaders, endpoint.body);
+
+        if (response.status >= 200 && response.status < 300) {
+            const contentType = response.headers?.['content-type']?.toLowerCase() || '';
+            const isHTML = contentType.includes('text/html');
+            const bodyLower = (response.body || '').toLowerCase();
+            const loginIndicators = ['<form', 'login', 'signin', 'authenticate'];
+            const hasLoginIndicators = loginIndicators.some(ind => bodyLower.includes(ind));
+
+            if (isHTML && hasLoginIndicators) return null;
+
+            const isJSON = contentType.includes('application/json') || (!isHTML && bodyLower.startsWith('{'));
+
+            if (isJSON) {
+                return {
+                    type: 'BROKEN_AUTHENTICATION',
+                    severity: 'HIGH',
+                    endpoint: endpoint.url,
+                    method: endpoint.method,
+                    title: 'Broken Authentication',
+                    description: `Endpoint accessible without authentication`,
+                    evidence: {
+                        status: response.status,
+                        bodyPreview: response.body ? response.body.substring(0, 200) : ''
+                    }
+                };
+            }
+        }
+    } catch (error) {
+        console.debug('[AutoScan] Auth test failed:', error);
+    }
+
+    return null;
+}
+
+/**
+ * Test endpoint for IDOR (automated)
+ */
+async function testIDORAuto(endpoint) {
+    const vulns = [];
+
+    try {
+        const ids = extractIDsFromURL(endpoint.url);
+
+        for (const idInfo of ids) {
+            const testUrl = generateIDTestURL(endpoint.url, idInfo);
+            if (!testUrl) continue;
+
+            try {
+                const response = await sendProxyRequest(testUrl, endpoint.method, endpoint.headers, endpoint.body);
+
+                if (response.status >= 200 && response.status < 300) {
+                    const contentType = response.headers?.['content-type']?.toLowerCase() || '';
+                    const isJSON = contentType.includes('application/json');
+
+                    if (isJSON && response.body) {
+                        vulns.push({
+                            type: 'IDOR',
+                            severity: 'HIGH',
+                            endpoint: endpoint.url,
+                            method: endpoint.method,
+                            title: 'Insecure Direct Object Reference',
+                            description: `ID manipulation from ${idInfo.value} to ${idInfo.testValue} succeeded`,
+                            evidence: {
+                                originalUrl: endpoint.url,
+                                testUrl: testUrl
+                            }
+                        });
+                        break; // Only report one IDOR per endpoint
+                    }
+                }
+            } catch (error) {
+                continue;
+            }
+        }
+    } catch (error) {
+        console.debug('[AutoScan] IDOR test failed:', error);
+    }
+
+    return vulns;
+}
+
+/**
+ * Test endpoint for method bypass (automated)
+ */
+async function testMethodBypassAuto(endpoint) {
+    const vulns = [];
+
+    try {
+        const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
+        const originalMethod = endpoint.method.toUpperCase();
+        const authHeaders = ['authorization', 'x-api-key', 'token', 'access-token', 'cookie', 'session'];
+
+        for (const method of methods) {
+            if (method === originalMethod) continue;
+
+            try {
+                const cleanHeaders = {};
+                for (const [key, value] of Object.entries(endpoint.headers || {})) {
+                    if (!authHeaders.includes(key.toLowerCase())) {
+                        cleanHeaders[key] = value;
+                    }
+                }
+
+                const response = await sendProxyRequest(endpoint.url, method, cleanHeaders, null);
+
+                if (response.status >= 200 && response.status < 300) {
+                    const contentType = response.headers?.['content-type']?.toLowerCase() || '';
+                    const isJSON = contentType.includes('application/json');
+
+                    if (isJSON && response.body) {
+                        vulns.push({
+                            type: 'METHOD_BYPASS',
+                            severity: 'MEDIUM',
+                            endpoint: endpoint.url,
+                            method: method,
+                            title: 'Method-Based Access Control Bypass',
+                            description: `Endpoint accessible via ${method} without authentication`,
+                            evidence: {
+                                originalMethod: originalMethod,
+                                bypassMethod: method
+                            }
+                        });
+                        break; // Only report one method bypass per endpoint
+                    }
+                }
+            } catch (error) {
+                continue;
+            }
+        }
+    } catch (error) {
+        console.debug('[AutoScan] Method test failed:', error);
+    }
+
+    return vulns;
+}
+
+/**
+ * Helper: Extract IDs from URL
+ */
+function extractIDsFromURL(url) {
+    const ids = [];
+    try {
+        const urlObj = new URL(url);
+        const pathParts = urlObj.pathname.split('/').filter(p => p.length > 0);
+
+        pathParts.forEach((part, index) => {
+            // Numeric ID
+            if (/^\d+$/.test(part)) {
+                ids.push({
+                    type: 'numeric',
+                    value: part,
+                    position: index,
+                    testValue: (parseInt(part) + 1).toString()
+                });
+            }
+            // Template variables: ${id}, :id, {id}
+            else if (/^[\$:]\{?[a-zA-Z_][a-zA-Z0-9_]*\}?$/.test(part) || /^\{[a-zA-Z_][a-zA-Z0-9_]*\}$/.test(part)) {
+                // These are template variables - try replacing with numeric values
+                ids.push({
+                    type: 'template-var',
+                    value: part,
+                    position: index,
+                    testValue: '1',  // Try ID 1
+                    testValue2: '2'  // Also try ID 2
+                });
+            }
+        });
+
+        // Also check query parameters for IDs
+        const params = urlObj.searchParams;
+        const queryIds = [];
+        for (const [key, value] of params.entries()) {
+            // Numeric query param that looks like an ID
+            if (/^\d+$/.test(value) && (key.toLowerCase().includes('id') || key.toLowerCase().includes('user'))) {
+                queryIds.push({
+                    type: 'query-param',
+                    key: key,
+                    value: value,
+                    testValue: (parseInt(value) + 1).toString()
+                });
+            }
+        }
+
+        ids.push(...queryIds);
+    } catch (error) {
+        console.debug('[AutoScan] ID extraction failed:', error);
+    }
+    return ids;
+}
+
+/**
+ * Helper: Generate test URL with manipulated ID
+ */
+function generateIDTestURL(originalUrl, idInfo) {
+    try {
+        const urlObj = new URL(originalUrl);
+        const pathParts = urlObj.pathname.split('/').filter(p => p.length > 0);
+        pathParts[idInfo.position] = idInfo.testValue;
+        urlObj.pathname = '/' + pathParts.join('/');
+        return urlObj.toString();
+    } catch (error) {
+        return null;
+    }
+}
+
+/**
+ * Render vulnerabilities in the list
+ */
+function renderVulnerabilities(vulns) {
+    const list = document.getElementById('vuln-list');
+    list.innerHTML = '';
+
+    if (vulns.length === 0) {
+        list.innerHTML = '<div class="empty-state">✅ No vulnerabilities found!</div>';
+        return;
+    }
+
+    vulns.forEach((vuln, index) => {
+        const item = document.createElement('div');
+        item.className = 'vuln-item';
+        item.dataset.index = index;
+
+        const header = document.createElement('div');
+        header.className = 'vuln-header';
+
+        const severityBadge = document.createElement('span');
+        severityBadge.className = `severity-badge severity-${vuln.severity}`;
+        severityBadge.textContent = vuln.severity;
+
+        const typeSpan = document.createElement('span');
+        typeSpan.className = 'vuln-type';
+        typeSpan.textContent = vuln.type.replace('_', ' ');
+
+        header.appendChild(severityBadge);
+        header.appendChild(typeSpan);
+
+        const title = document.createElement('div');
+        title.className = 'vuln-title';
+        title.textContent = vuln.title;
+
+        const endpointDiv = document.createElement('div');
+        endpointDiv.className = 'vuln-endpoint';
+        endpointDiv.textContent = `${vuln.method} ${vuln.endpoint}`;
+        endpointDiv.title = `${vuln.method} ${vuln.endpoint}`;
+
+        item.appendChild(header);
+        item.appendChild(title);
+        item.appendChild(endpointDiv);
+
+        item.addEventListener('click', function() {
+            selectVulnerability(parseInt(this.dataset.index));
+        });
+
+        list.appendChild(item);
+    });
+}
+
+/**
+ * Display vulnerability statistics
+ */
+function displayVulnStats(vulns) {
+    const statsDiv = document.getElementById('vuln-stats');
+    const high = vulns.filter(v => v.severity === 'HIGH').length;
+    const medium = vulns.filter(v => v.severity === 'MEDIUM').length;
+    const low = vulns.filter(v => v.severity === 'LOW').length;
+
+    statsDiv.innerHTML = `
+        <div class="scan-stats-left">
+            <div class="scan-stats-item">
+                <span class="scan-stats-label">Total</span>
+                <span class="scan-stats-value">${vulns.length}</span>
+            </div>
+            <div class="scan-stats-item">
+                <span class="scan-stats-label">High</span>
+                <span class="scan-stats-value" style="color: var(--method-delete);">${high}</span>
+            </div>
+            <div class="scan-stats-item">
+                <span class="scan-stats-label">Medium</span>
+                <span class="scan-stats-value" style="color: var(--method-post);">${medium}</span>
+            </div>
+            <div class="scan-stats-item">
+                <span class="scan-stats-label">Low</span>
+                <span class="scan-stats-value">${low}</span>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Select a vulnerability for viewing details
+ */
+function selectVulnerability(index) {
+    const vuln = vulnerabilities[index];
+
+    // Highlight sidebar item
+    document.querySelectorAll('#vuln-list .vuln-item').forEach((el, idx) => {
+        el.classList.toggle('active', idx === index);
+    });
+
+    // Show vulnerability details in analysis output
+    document.getElementById('default-view').classList.add('hidden');
+    document.getElementById('detail-view').classList.add('hidden');
+
+    const output = document.getElementById('analysis-output');
+    output.innerHTML = `
+        <div class="vuln-header" style="margin-bottom: 16px;">
+            <span class="severity-badge severity-${vuln.severity}">${vuln.severity}</span>
+            <span class="vuln-type">${vuln.type.replace('_', ' ')}</span>
+        </div>
+        <h3 style="margin-top: 0; color: var(--text-primary);">${vuln.title}</h3>
+        <div class="result-info">Endpoint: ${vuln.method} ${vuln.endpoint}</div>
+        <div class="result-info" style="margin-top: 12px; margin-bottom: 12px;">${vuln.description}</div>
+
+        <h4 style="color: var(--text-secondary); font-size: 12px; text-transform: uppercase; margin-top: 20px;">Evidence</h4>
+        <pre style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 4px; font-size: 11px; overflow-x: auto;">${JSON.stringify(vuln.evidence, null, 2)}</pre>
+
+        ${vuln.remediation ? `<h4 style="color: var(--text-secondary); font-size: 12px; text-transform: uppercase; margin-top: 20px;">Remediation</h4><div class="result-info">${vuln.remediation}</div>` : ''}
+    `;
+}
+
+// Add event listeners for auto scan
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('btn-run-auto-scan')?.addEventListener('click', runAutoScanAll);
+    document.getElementById('btn-auto-scan')?.addEventListener('click', runAutoScanCurrent);
+});
 
 // polyfill for browser namespace if chrome
 if (typeof browser === 'undefined' && typeof chrome !== 'undefined') {

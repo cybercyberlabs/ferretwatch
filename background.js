@@ -12,6 +12,7 @@ class BackgroundService {
         this.tabResults = new Map();
         this.apiEndpoints = new Map(); // Store API endpoints per tab
         this.settings = null;
+        this.requestHeadersCache = new Map(); // Cache for capturing full headers including cookies
 
         this.init();
     }
@@ -187,12 +188,68 @@ class BackgroundService {
         const exists = currentEndpoints.some(e => e.method === apiData.method && e.url === apiData.url);
 
         if (!exists) {
+            // Try to get full headers from cache (including cookies)
+            const cacheKey = `${apiData.method}:${apiData.url}`;
+            const cachedHeaders = this.requestHeadersCache.get(cacheKey);
+
+            console.log(`🔍 [API] Looking for cached headers: ${cacheKey}`);
+            console.log(`🔍 [API] Cache has entry: ${!!cachedHeaders}`);
+            console.log(`🔍 [API] Current cache size: ${this.requestHeadersCache.size}`);
+
+            if (cachedHeaders) {
+                const hadCookie = Object.keys(apiData.headers || {}).some(k => k.toLowerCase() === 'cookie');
+
+                // Merge captured headers with webRequest headers (webRequest takes precedence)
+                apiData.headers = { ...apiData.headers, ...cachedHeaders };
+
+                const nowHasCookie = Object.keys(apiData.headers).some(k => k.toLowerCase() === 'cookie');
+                console.log(`✅ [API] Merged headers from webRequest for ${cacheKey}`);
+                console.log(`🍪 [API] Cookie before merge: ${hadCookie}, after merge: ${nowHasCookie}`);
+
+                // Clean up cache entry after use
+                this.requestHeadersCache.delete(cacheKey);
+            } else {
+                console.log(`⚠️ [API] No cached headers found for ${cacheKey} - may have timed out or not captured yet`);
+            }
+
             currentEndpoints.push(apiData);
             this.apiEndpoints.set(tabId, currentEndpoints);
 
             // Notify any open API Explorer tabs about the new endpoint
             this.notifyExplorerTabs(tabId, apiData);
         }
+    }
+
+    /**
+     * Cache request headers captured from webRequest
+     * @param {string} method - HTTP method
+     * @param {string} url - Request URL
+     * @param {Object} headers - Headers object from webRequest
+     */
+    cacheRequestHeaders(method, url, headers) {
+        const cacheKey = `${method}:${url}`;
+
+        // Convert headers array to object
+        const headersObj = {};
+        if (Array.isArray(headers)) {
+            headers.forEach(h => {
+                headersObj[h.name] = h.value;
+            });
+        }
+
+        // Check if Cookie header is present
+        const hasCookie = Object.keys(headersObj).some(k => k.toLowerCase() === 'cookie');
+        console.log(`📦 [CACHE] Storing headers for ${cacheKey} - Cookie present: ${hasCookie}`);
+        if (hasCookie) {
+            console.log(`🍪 [CACHE] Cookie value: ${headersObj['Cookie'] || headersObj['cookie']}`);
+        }
+
+        this.requestHeadersCache.set(cacheKey, headersObj);
+
+        // Auto-cleanup after 5 seconds to prevent memory leaks
+        setTimeout(() => {
+            this.requestHeadersCache.delete(cacheKey);
+        }, 5000);
     }
 
     /**
@@ -677,7 +734,43 @@ self.activeProxyTargets = activeProxyTargets;
         const webRequest = api.webRequest || (typeof chrome !== 'undefined' ? chrome.webRequest : null);
 
         if (webRequest && webRequest.onBeforeSendHeaders) {
-            console.log('✅ [TOP-LEVEL] Setting up webRequest listener');
+            console.log('✅ [TOP-LEVEL] Setting up webRequest listeners');
+
+            // Listener 1: Capture ALL request headers (including cookies) for API discovery
+            webRequest.onBeforeSendHeaders.addListener(
+                (details) => {
+                    // Skip extension internal requests
+                    if (details.url.startsWith('chrome-extension://') || details.url.startsWith('moz-extension://')) {
+                        return;
+                    }
+
+                    // Skip non-XHR/Fetch requests (only capture API calls)
+                    if (details.type !== 'xmlhttprequest' && details.type !== 'fetch' && details.type !== 'other') {
+                        console.log(`⏭️ [HEADERS] Skipping non-API request type: ${details.type} for ${details.url}`);
+                        return;
+                    }
+
+                    console.log(`🎯 [HEADERS] Intercepted ${details.type} request: ${details.method} ${details.url}`);
+
+                    // Check for Cookie header in this request
+                    const hasCookie = details.requestHeaders?.some(h => h.name.toLowerCase() === 'cookie');
+                    console.log(`🍪 [HEADERS] Cookie present in webRequest: ${hasCookie}`);
+
+                    // Cache the full headers for this request
+                    if (backgroundService && backgroundService.cacheRequestHeaders) {
+                        backgroundService.cacheRequestHeaders(details.method, details.url, details.requestHeaders);
+                        console.log(`📦 [HEADERS] Cached headers for ${details.method} ${details.url}`);
+                    } else {
+                        console.warn(`⚠️ [HEADERS] backgroundService not available!`);
+                    }
+                },
+                { urls: ["<all_urls>"] },
+                typeof browser !== 'undefined'
+                    ? ["requestHeaders"]  // Firefox
+                    : ["requestHeaders", "extraHeaders"]  // Chrome - extraHeaders needed for Cookie
+            );
+
+            // Listener 2: Proxy request rewriting (existing functionality)
             webRequest.onBeforeSendHeaders.addListener(
                 (details) => {
                     let hasProxyMarker = false;

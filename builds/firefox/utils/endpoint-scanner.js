@@ -61,14 +61,30 @@ class EndpointScanner {
 
         // Patterns to exclude (false positives)
         this.excludePatterns = [
-            /\.(jpg|jpeg|png|gif|svg|webp|ico|css|js|woff|woff2|ttf|eot)$/i,  // Static assets
+            // Image files
+            /\.(jpg|jpeg|png|gif|svg|webp|bmp|tiff|tif|ico|avif|heic|heif)$/i,
+            // Media files
+            /\.(mp4|webm|ogg|mp3|wav|flac|aac|m4a|avi|mov|wmv|flv)$/i,
+            // Font files
+            /\.(woff|woff2|ttf|eot|otf)$/i,
+            // Document files
+            /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv|zip|rar|tar|gz|7z)$/i,
+            // Web assets
+            /\.(css|js|map|json|xml)$/i,
+            // Common files
             /^\/$/,  // Root path only
-            /^\/(favicon\.ico|robots\.txt|sitemap\.xml)$/i,  // Common files
-            /^https?:\/\/(?!.*(?:localhost|127\.0\.0\.1|\[::1\]))/,  // External domains (keep local)
-            /^\/\//,  // Protocol-relative URLs
-            /^javascript:/i,  // JavaScript URLs
-            /^mailto:/i,  // Email links
-            /^tel:/i,  // Phone links
+            /^\/(favicon\.ico|robots\.txt|sitemap\.xml|manifest\.json|browserconfig\.xml)$/i,
+            // External domains (exclude non-local)
+            /^https?:\/\/(?!.*(?:localhost|127\.0\.0\.1|\[::1\]))/,
+            // Protocol-relative URLs
+            /^\/\//,
+            // Special URLs
+            /^javascript:/i,
+            /^mailto:/i,
+            /^tel:/i,
+            /^sms:/i,
+            /^data:/i,
+            /^blob:/i,
             /^#/,  // Hash anchors
         ];
 

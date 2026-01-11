@@ -439,9 +439,14 @@ body {
     margin: 0 0 10px 0;
     white-space: pre-wrap;
     word-break: break-all;
-    /* Prevent long strings causing overflow */
-    flex: 1;
-    /* Take available space */
+}
+
+.code-block.editable {
+    border: 1px solid var(--border);
+    resize: vertical;
+    min-height: 100px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 
@@ -656,4 +661,95 @@ body {
     text-align: center;
     color: var(--text-secondary);
     font-size: 14px;
+}
+
+/* Vulnerability Styles */
+.vuln-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.vuln-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.vuln-item.active {
+    background: rgba(239, 68, 68, 0.1);
+    border-left: 3px solid var(--method-delete);
+}
+
+.vuln-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.severity-badge {
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+
+.severity-HIGH {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--method-delete);
+}
+
+.severity-MEDIUM {
+    background: rgba(234, 179, 8, 0.2);
+    color: var(--method-post);
+}
+
+.severity-LOW {
+    background: rgba(100, 116, 139, 0.2);
+    color: var(--text-secondary);
+}
+
+.vuln-type {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.vuln-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.vuln-endpoint {
+    font-size: 11px;
+    font-family: monospace;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.scan-progress {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.progress-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 12px 0;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.3s;
 }
