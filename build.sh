@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-VERSION="2.2.0"
+VERSION="2.3.0"
 BUILD_DIR="builds"
 DIST_DIR="$(pwd)/dist"
 

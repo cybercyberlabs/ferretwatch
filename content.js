@@ -886,6 +886,36 @@
                     });
                 })();
                 return true;
+
+            } else if (message.action === 'scanUnusedEndpoints') {
+                (async () => {
+                    try {
+                        if (typeof window.EndpointScanner === 'undefined') {
+                            sendResponse({
+                                success: false,
+                                error: 'EndpointScanner not loaded'
+                            });
+                            return;
+                        }
+
+                        const scanner = new window.EndpointScanner();
+                        const scanResult = await scanner.scanPage();
+
+                        sendResponse({
+                            success: true,
+                            discovered: scanResult.endpoints,
+                            total: scanResult.total,
+                            scannedAt: scanResult.scannedAt
+                        });
+                    } catch (error) {
+                        console.error('[FW] Endpoint scan error:', error);
+                        sendResponse({
+                            success: false,
+                            error: error.message
+                        });
+                    }
+                })();
+                return true;
             }
             return true;
         });

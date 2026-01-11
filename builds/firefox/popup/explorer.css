@@ -510,3 +510,150 @@ body {
         opacity: 0.8;
     }
 }
+
+/* Tab Selector */
+.tab-selector {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 10px 16px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.tab-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.tab-content {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.tab-pane {
+    display: none;
+    flex: 1;
+    overflow: hidden;
+}
+
+.tab-pane.active {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Unused Endpoints Tab */
+.scan-prompt {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.scan-prompt .icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.scan-prompt p {
+    margin: 0 0 20px 0;
+    font-size: 14px;
+}
+
+.scan-stats {
+    padding: 12px 16px;
+    background: rgba(99, 102, 241, 0.1);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+}
+
+.scan-stats-left {
+    display: flex;
+    gap: 16px;
+    color: var(--text-secondary);
+}
+
+.scan-stats-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.scan-stats-label {
+    text-transform: uppercase;
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.scan-stats-value {
+    font-size: 14px;
+    font-weight: bold;
+    color: var(--text-primary);
+}
+
+.confidence-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.confidence-high {
+    background: rgba(34, 197, 94, 0.2);
+    color: var(--method-get);
+}
+
+.confidence-medium {
+    background: rgba(234, 179, 8, 0.2);
+    color: var(--method-post);
+}
+
+.confidence-low {
+    background: rgba(100, 116, 139, 0.2);
+    color: var(--text-secondary);
+}
+
+.endpoint-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.empty-state {
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+}

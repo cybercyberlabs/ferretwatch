@@ -135,6 +135,10 @@ class BackgroundService {
                     sendResponse({ success: true });
                     break;
 
+                case 'SCAN_UNUSED_ENDPOINTS':
+                    this.handleUnusedEndpointScan(message.tabId, sender.tab?.id).then(sendResponse);
+                    return true;
+
                 default:
                     console.warn('Unknown message type:', message.type);
                     sendResponse({ error: 'Unknown message type' });
@@ -188,6 +192,87 @@ class BackgroundService {
 
             // Notify any open API Explorer tabs about the new endpoint
             this.notifyExplorerTabs(tabId, apiData);
+        }
+    }
+
+    /**
+     * Handle unused endpoint scan request
+     */
+    async handleUnusedEndpointScan(requestedTabId, senderTabId) {
+        const targetTabId = requestedTabId || senderTabId;
+
+        if (!targetTabId) {
+            return {
+                success: false,
+                error: 'No target tab specified'
+            };
+        }
+
+        try {
+            console.log(`🔍 [Background] Starting unused endpoint scan for tab ${targetTabId}`);
+
+            const api = typeof browser !== 'undefined' ? browser : chrome;
+
+            // Request the content script to scan the page
+            const scanResponse = await api.tabs.sendMessage(targetTabId, {
+                action: 'scanUnusedEndpoints'
+            });
+
+            if (!scanResponse || !scanResponse.success) {
+                return {
+                    success: false,
+                    error: scanResponse?.error || 'Scan failed'
+                };
+            }
+
+            console.log(`✅ [Background] Scan complete. Found ${scanResponse.total} potential endpoints`);
+
+            // Get the list of API calls that have been captured for this tab
+            const calledEndpoints = this.apiEndpoints.get(targetTabId) || [];
+
+            // Compare discovered endpoints with called endpoints
+            const calledUrls = new Set(calledEndpoints.map(ep => {
+                try {
+                    const url = new URL(ep.url);
+                    return url.origin + url.pathname;
+                } catch {
+                    return ep.url;
+                }
+            }));
+
+            // Filter out endpoints that have been called
+            const unused = scanResponse.discovered.filter(endpoint => {
+                const normalizedUrl = endpoint.normalizedUrl || endpoint.url;
+                return !calledUrls.has(normalizedUrl);
+            });
+
+            const used = scanResponse.discovered.filter(endpoint => {
+                const normalizedUrl = endpoint.normalizedUrl || endpoint.url;
+                return calledUrls.has(normalizedUrl);
+            });
+
+            console.log(`📊 [Background] Analysis: ${unused.length} unused, ${used.length} used`);
+
+            return {
+                success: true,
+                discovered: scanResponse.discovered,
+                unused: unused,
+                used: used,
+                stats: {
+                    totalDiscovered: scanResponse.total,
+                    totalCalled: calledEndpoints.length,
+                    totalUnused: unused.length,
+                    totalUsed: used.length
+                },
+                scannedAt: scanResponse.scannedAt
+            };
+
+        } catch (error) {
+            console.error(`❌ [Background] Unused endpoint scan failed:`, error);
+            return {
+                success: false,
+                error: error.message
+            };
         }
     }
 

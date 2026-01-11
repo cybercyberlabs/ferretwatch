@@ -99,11 +99,11 @@
                 bodyText = '[Body Read Error: ' + bodyError.message + ']';
             }
 
-            // Extract response headers
-            const responseHeaders = [];
+            // Extract response headers as object
+            const responseHeaders = {};
             try {
                 for (const [key, value] of response.headers.entries()) {
-                    responseHeaders.push([key, value]);
+                    responseHeaders[key] = value;
                 }
             } catch (headerError) {
                 console.error('[FW Proxy] Failed to read response headers:', headerError);
