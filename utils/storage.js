@@ -2,6 +2,37 @@
  * Storage utilities for managing extension settings and data
  */
 
+// Cache for debugMode setting (loaded asynchronously at startup)
+let cachedDebugMode = false;
+
+// Load debugMode from storage on initialization
+(async () => {
+    try {
+        const api = typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null);
+        if (api && api.storage) {
+            const result = await api.storage.local.get('debugMode');
+            cachedDebugMode = result.debugMode || false;
+        }
+    } catch (e) {
+        // Ignore errors during initialization
+    }
+})();
+
+// Listen for debugMode changes
+if (typeof browser !== 'undefined' && browser.storage) {
+    browser.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && changes.debugMode) {
+            cachedDebugMode = changes.debugMode.newValue || false;
+        }
+    });
+} else if (typeof chrome !== 'undefined' && chrome.storage) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && changes.debugMode) {
+            cachedDebugMode = changes.debugMode.newValue || false;
+        }
+    });
+}
+
 /**
  * Default settings for the extension
  */
@@ -43,7 +74,7 @@ const DEFAULT_SETTINGS = {
     maxFindings: 10,
     enableHighlighting: false,
     debugMode: false,
-    
+
     // Bucket scanning settings
     cloudBucketScanning: {
         enabled: true,
@@ -67,21 +98,24 @@ const DEFAULT_SETTINGS = {
  * @returns {any} Setting value
  */
 function getSetting(key, defaultValue = null) {
+    // Special handling for debugMode - use cached value from browser.storage
+    if (key === 'debugMode') {
+        return cachedDebugMode;
+    }
+
     try {
-        // For browser environment, use localStorage as fallback
-        if (typeof browser !== 'undefined' && browser.storage) {
-            // This would be async in real implementation
-            return defaultValue || getNestedValue(DEFAULT_SETTINGS, key);
-        } else if (typeof localStorage !== 'undefined') {
+        // For other settings, try localStorage
+        if (typeof localStorage !== 'undefined') {
             const stored = localStorage.getItem('cyberlabs-scanner-settings');
             const settings = stored ? JSON.parse(stored) : DEFAULT_SETTINGS;
-            return getNestedValue(settings, key) || defaultValue;
+            const value = getNestedValue(settings, key);
+            return value !== undefined ? value : defaultValue;
         }
     } catch (error) {
         console.error('Error getting setting:', key, error);
     }
-    
-    return getNestedValue(DEFAULT_SETTINGS, key) || defaultValue;
+
+    return defaultValue !== null ? defaultValue : getNestedValue(DEFAULT_SETTINGS, key);
 }
 
 /**

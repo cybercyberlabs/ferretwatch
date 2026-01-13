@@ -37,12 +37,14 @@ class ProgressiveScanner {
     }
     
     /**
-     * Info logging for important discoveries - always shown
+     * Info logging for important discoveries - shown when debug mode enabled
      * @param {string} message - Info message
      * @param {...any} args - Additional arguments to log
      */
     infoLog(message, ...args) {
-        console.log(`[Scanner] ${message}`, ...args);
+        if (window.StorageUtils?.getSetting('debugMode', false)) {
+            console.log(`[Scanner] ${message}`, ...args);
+        }
     }
     
     /**
@@ -675,7 +677,7 @@ class ProgressiveScanner {
     
     reportIntermediateResults(findings, phase) {
         if (findings.length > 0 && typeof window.reportFindings === 'function') {
-            console.log(`Found ${findings.length} credentials in ${phase} phase`);
+            this.debugLog(`Found ${findings.length} credentials in ${phase} phase`);
             // Don't report immediately to avoid duplicate notifications
         }
     }

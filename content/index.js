@@ -23,9 +23,12 @@
     const scanner = window.FerretWatchScanner || {};
     const notifications = window.FerretWatchNotifications || {};
 
-    // Module functions
-    const debugLog = utils.debugLog || console.log;
-    const infoLog = utils.infoLog || console.log;
+    // Module functions - use utility logging functions that respect debug level
+    const debugLog = utils.debugLog || (() => {});
+    const infoLog = utils.infoLog || (() => {});
+    const warnLog = utils.warnLog || console.warn;
+    const errorLog = utils.errorLog || console.error;
+    const criticalLog = utils.criticalLog || console.error;
 
     // Global state
     let scannerInstance = null;
@@ -73,7 +76,7 @@
      */
     async function injectInterceptorEarly() {
         try {
-            console.log('[FW Content] Early initialization at document_start');
+            debugLog('[FW Content] Early initialization at document_start');
 
             // Load whitelist first
             if (whitelist.loadWhitelist) {
@@ -82,7 +85,7 @@
 
             // Check if domain is whitelisted
             if (whitelist.isDomainWhitelisted && whitelist.isDomainWhitelisted()) {
-                console.log('[FW Content] Domain is whitelisted - skipping interceptor injection');
+                debugLog('[FW Content] Domain is whitelisted - skipping interceptor injection');
                 return;
             }
 
@@ -90,7 +93,7 @@
             if (interceptor.injectInterceptor) {
                 const injected = interceptor.injectInterceptor(whitelist.isDomainWhitelisted);
                 if (injected) {
-                    console.log('[FW Content] Interceptor injected at document_start');
+                    debugLog('[FW Content] Interceptor injected at document_start');
                 }
             }
         } catch (error) {
@@ -188,7 +191,7 @@
      * Main initialization
      */
     async function initialize() {
-        console.log('[FW Content] FerretWatch Content Script initialized');
+        debugLog('[FW Content] FerretWatch Content Script initialized');
 
         // 1. Inject interceptor immediately (at document_start if possible)
         await injectInterceptorEarly();

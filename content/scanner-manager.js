@@ -14,7 +14,6 @@
     // Get utilities
     const utils = window.FerretWatchUtils || {};
     const debugLog = utils.debugLog || function() {};
-    const infoLog = utils.infoLog || function() {};
 
     // Get whitelist checker
     const whitelistChecker = window.FerretWatchWhitelist || {};
@@ -118,7 +117,8 @@
         window.lastScanResults = lastScanResults;
 
         if (findings.length === 0) {
-            infoLog("✅ No security issues found on this page.");
+            // Only log "no issues" in debug mode to avoid console spam on clean pages
+            debugLog("✅ No security issues found on this page.");
             return;
         }
 
@@ -131,16 +131,16 @@
         const highCount = findings.filter(f => f.riskLevel === 'high').length;
         const mediumCount = findings.filter(f => f.riskLevel === 'medium').length;
 
-        // Show summary with counts
+        // Show summary with counts (ALWAYS shown - not conditional on debugMode)
         if (criticalCount > 0 || highCount > 0) {
-            infoLog(`🚨 SECURITY ALERT: Found ${criticalCount + highCount} high-risk issue(s) on ${window.location.hostname}`);
+            console.warn(`🚨 SECURITY ALERT: Found ${criticalCount + highCount} high-risk issue(s) on ${window.location.hostname}`);
         } else if (mediumCount > 0) {
-            infoLog(`⚠️ Found ${mediumCount} medium-risk issue(s) on ${window.location.hostname}`);
+            console.warn(`⚠️ Found ${mediumCount} medium-risk issue(s) on ${window.location.hostname}`);
         } else {
-            infoLog(`ℹ️ Found ${findings.length} low-risk issue(s) on ${window.location.hostname}`);
+            console.log(`ℹ️ Found ${findings.length} low-risk issue(s) on ${window.location.hostname}`);
         }
 
-        // Show actual findings (always visible for important discoveries)
+        // Show actual findings (ALWAYS visible for important discoveries)
         const importantFindings = findings.filter(f => ['critical', 'high', 'medium'].includes(f.riskLevel));
         importantFindings.forEach((finding, index) => {
             const riskEmoji = {
@@ -154,10 +154,10 @@
                 // Bucket finding
                 const accessStatus = finding.bucketInfo.testResults?.listingEnabled ? 'PUBLIC LISTING' :
                     finding.bucketInfo.testResults?.accessible ? 'ACCESSIBLE' : 'SECURED';
-                infoLog(`${riskEmoji} [${finding.riskLevel?.toUpperCase()}] ${finding.type}: ${finding.value} (${accessStatus})`);
+                console.warn(`${riskEmoji} [${finding.riskLevel?.toUpperCase()}] ${finding.type}: ${finding.value} (${accessStatus})`);
             } else {
                 // Regular finding
-                infoLog(`${riskEmoji} [${finding.riskLevel?.toUpperCase()}] ${finding.type}: ${finding.value}`);
+                console.warn(`${riskEmoji} [${finding.riskLevel?.toUpperCase()}] ${finding.type}: ${finding.value}`);
             }
         });
 
@@ -261,16 +261,16 @@
     async function initializeScanner() {
         try {
             const currentDomain = getCurrentDomain();
-            console.log('[FW Content] Initializing FerretWatch scanner on domain:', currentDomain);
+            debugLog('[FW Content] Initializing FerretWatch scanner on domain:', currentDomain);
 
             await loadSettings(); // Load settings into cache
 
             if (isDomainWhitelisted()) {
-                console.log('[FW Content] FerretWatch disabled for whitelisted domain:', currentDomain);
+                debugLog('[FW Content] FerretWatch disabled for whitelisted domain:', currentDomain);
                 return;
             }
 
-            console.log('[FW Content] FerretWatch starting scan on:', currentDomain);
+            debugLog('[FW Content] FerretWatch starting scan on:', currentDomain);
             debugLog('FerretWatch Auto-scanning for credentials...');
 
             await runScan();
@@ -324,27 +324,6 @@
         resetSeenCredentials
     };
 
-    // Expose StorageUtils for backward compatibility
-    window.StorageUtils = {
-        get: async (key) => {
-            if (!api.storage) return null;
-            const result = await api.storage.local.get([key]);
-            return result[key] || null;
-        },
-        set: async (key, value) => {
-            if (!api.storage) return;
-            await api.storage.local.set({ [key]: value });
-        },
-        remove: async (key) => {
-            if (!api.storage) return;
-            await api.storage.local.remove([key]);
-        },
-        isDomainWhitelisted: (domain = null) => {
-            return isDomainWhitelisted(domain);
-        },
-        getSetting: (key, defaultValue) => {
-            return getSetting(key, defaultValue);
-        }
-    };
+    // Note: StorageUtils is provided by utils/storage.js which is loaded before this script
 
 })();

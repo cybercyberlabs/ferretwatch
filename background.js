@@ -13,12 +13,22 @@ class BackgroundService {
         this.apiEndpoints = new Map(); // Store API endpoints per tab
         this.settings = null;
         this.requestHeadersCache = new Map(); // Cache for capturing full headers including cookies
+        this.debugMode = false; // Will be loaded from settings
 
         this.init();
     }
 
+    /**
+     * Debug logging - only logs when debugMode is enabled
+     */
+    debugLog(message, ...args) {
+        if (this.debugMode) {
+            console.log(message, ...args);
+        }
+    }
+
     init() {
-        console.log('🔧 Background service worker initializing...');
+// debugLog('🔧 Background service worker initializing...');
 
         // Set up listeners immediately (Synchronous)
         this.setupMessageListeners();
@@ -27,7 +37,7 @@ class BackgroundService {
 
         // Load settings (Async)
         this.loadSettings().then(() => {
-            console.log('✅ Background service worker ready');
+// debugLog('✅ Background service worker ready');
         });
     }
 
@@ -35,11 +45,13 @@ class BackgroundService {
     async loadSettings() {
         try {
             const api = typeof browser !== 'undefined' ? browser : chrome;
-            const result = await api.storage.local.get('userSettings');
+            const result = await api.storage.local.get(['userSettings', 'debugMode']);
             this.settings = result.userSettings || this.getDefaultSettings();
+            this.debugMode = result.debugMode || false;
         } catch (error) {
             console.error('Failed to load settings:', error);
             this.settings = this.getDefaultSettings();
+            this.debugMode = false;
         }
     }
 
@@ -193,7 +205,7 @@ class BackgroundService {
             return;
         }
 
-        console.log(`[API] Storing endpoint for tab ${tabId}: ${apiData.method} ${apiData.url}`);
+// debugLog(`[API] Storing endpoint for tab ${tabId}: ${apiData.method} ${apiData.url}`);
 
         // Store the tab origin for resolving relative URLs during replay
         if (tabUrl) {
@@ -215,9 +227,9 @@ class BackgroundService {
             const cacheKey = `${apiData.method}:${apiData.url}`;
             const cachedHeaders = this.requestHeadersCache.get(cacheKey);
 
-            console.log(`🔍 [API] Looking for cached headers: ${cacheKey}`);
-            console.log(`🔍 [API] Cache has entry: ${!!cachedHeaders}`);
-            console.log(`🔍 [API] Current cache size: ${this.requestHeadersCache.size}`);
+// debugLog(`🔍 [API] Looking for cached headers: ${cacheKey}`);
+// debugLog(`🔍 [API] Cache has entry: ${!!cachedHeaders}`);
+// debugLog(`🔍 [API] Current cache size: ${this.requestHeadersCache.size}`);
 
             if (cachedHeaders) {
                 const hadCookie = Object.keys(apiData.headers || {}).some(k => k.toLowerCase() === 'cookie');
@@ -226,13 +238,13 @@ class BackgroundService {
                 apiData.headers = { ...apiData.headers, ...cachedHeaders };
 
                 const nowHasCookie = Object.keys(apiData.headers).some(k => k.toLowerCase() === 'cookie');
-                console.log(`✅ [API] Merged headers from webRequest for ${cacheKey}`);
-                console.log(`🍪 [API] Cookie before merge: ${hadCookie}, after merge: ${nowHasCookie}`);
+// debugLog(`✅ [API] Merged headers from webRequest for ${cacheKey}`);
+// debugLog(`🍪 [API] Cookie before merge: ${hadCookie}, after merge: ${nowHasCookie}`);
 
                 // Clean up cache entry after use
                 this.requestHeadersCache.delete(cacheKey);
             } else {
-                console.log(`⚠️ [API] No cached headers found for ${cacheKey} - may have timed out or not captured yet`);
+// debugLog(`⚠️ [API] No cached headers found for ${cacheKey} - may have timed out or not captured yet`);
             }
 
             // Mark as live request with source
@@ -256,7 +268,7 @@ class BackgroundService {
             return;
         }
 
-        console.log(`[API] Received response for tab ${tabId}: ${responseData.status} ${responseData.method} ${responseData.url}`);
+// debugLog(`[API] Received response for tab ${tabId}: ${responseData.status} ${responseData.method} ${responseData.url}`);
 
         const currentEndpoints = this.apiEndpoints.get(tabId) || [];
 
@@ -283,7 +295,7 @@ class BackgroundService {
             // Notify explorer tabs
             this.notifyExplorerTabs(tabId, endpoint);
 
-            console.log(`✅ [API] Updated endpoint with response data`);
+// debugLog(`✅ [API] Updated endpoint with response data`);
         } else {
             console.warn(`⚠️ [API] No matching request found for response: ${responseData.method} ${responseData.url}`);
 
@@ -317,9 +329,9 @@ class BackgroundService {
      * Replay/send a request
      */
     async replayRequest(requestData) {
-        console.log(`[API] Replaying request: ${requestData.method} ${requestData.url}`);
-        console.log(`[API] Request origin: ${requestData.origin || 'NOT SET'}`);
-        console.log(`[API] Full request data:`, requestData);
+// debugLog(`[API] Replaying request: ${requestData.method} ${requestData.url}`);
+// debugLog(`[API] Request origin: ${requestData.origin || 'NOT SET'}`);
+// debugLog(`[API] Full request data:`, requestData);
 
         const startTime = Date.now();
 
@@ -329,7 +341,7 @@ class BackgroundService {
             if (requestData.origin && !requestData.url.startsWith('http://') && !requestData.url.startsWith('https://')) {
                 try {
                     absoluteUrl = new URL(requestData.url, requestData.origin).href;
-                    console.log(`[API] Resolved relative URL: ${requestData.url} -> ${absoluteUrl}`);
+// debugLog(`[API] Resolved relative URL: ${requestData.url} -> ${absoluteUrl}`);
                 } catch (e) {
                     console.warn('[API] Could not resolve relative URL:', requestData.url, e);
                 }
@@ -338,7 +350,7 @@ class BackgroundService {
                 console.warn(`[API] This will cause a NetworkError. Origin should have been stored when request was captured.`);
             }
 
-            console.log(`[API] Final URL to fetch: ${absoluteUrl}`);
+// debugLog(`[API] Final URL to fetch: ${absoluteUrl}`);
 
             const response = await fetch(absoluteUrl, {
                 method: requestData.method,
@@ -357,7 +369,7 @@ class BackgroundService {
                 headers[key] = value;
             }
 
-            console.log(`✅ [API] Request completed: ${response.status} in ${duration}ms`);
+// debugLog(`✅ [API] Request completed: ${response.status} in ${duration}ms`);
 
             return {
                 success: true,
@@ -398,9 +410,9 @@ class BackgroundService {
 
         // Check if Cookie header is present
         const hasCookie = Object.keys(headersObj).some(k => k.toLowerCase() === 'cookie');
-        console.log(`📦 [CACHE] Storing headers for ${cacheKey} - Cookie present: ${hasCookie}`);
+// debugLog(`📦 [CACHE] Storing headers for ${cacheKey} - Cookie present: ${hasCookie}`);
         if (hasCookie) {
-            console.log(`🍪 [CACHE] Cookie value: ${headersObj['Cookie'] || headersObj['cookie']}`);
+// debugLog(`🍪 [CACHE] Cookie value: ${headersObj['Cookie'] || headersObj['cookie']}`);
         }
 
         this.requestHeadersCache.set(cacheKey, headersObj);
@@ -425,7 +437,7 @@ class BackgroundService {
         }
 
         try {
-            console.log(`🔍 [Background] Starting unused endpoint scan for tab ${targetTabId}`);
+// debugLog(`🔍 [Background] Starting unused endpoint scan for tab ${targetTabId}`);
 
             const api = typeof browser !== 'undefined' ? browser : chrome;
 
@@ -441,7 +453,7 @@ class BackgroundService {
                 };
             }
 
-            console.log(`✅ [Background] Scan complete. Found ${scanResponse.total} potential endpoints`);
+// debugLog(`✅ [Background] Scan complete. Found ${scanResponse.total} potential endpoints`);
 
             // Get the list of API calls that have been captured for this tab
             const calledEndpoints = this.apiEndpoints.get(targetTabId) || [];
@@ -467,7 +479,7 @@ class BackgroundService {
                 return calledUrls.has(normalizedUrl);
             });
 
-            console.log(`📊 [Background] Analysis: ${unused.length} unused, ${used.length} used`);
+// debugLog(`📊 [Background] Analysis: ${unused.length} unused, ${used.length} used`);
 
             // Get tab URL to provide origin for resolving relative URLs
             let tabOrigin = null;
@@ -475,7 +487,7 @@ class BackgroundService {
                 const tab = await api.tabs.get(targetTabId);
                 if (tab && tab.url) {
                     tabOrigin = new URL(tab.url).origin;
-                    console.log(`🌐 [Background] Tab origin for URL resolution: ${tabOrigin}`);
+// debugLog(`🌐 [Background] Tab origin for URL resolution: ${tabOrigin}`);
                 }
             } catch (e) {
                 console.warn('[Background] Could not get tab URL for origin:', e);
@@ -539,9 +551,9 @@ class BackgroundService {
 
     async handleProxyRequest(requestData, specifiedTabId) {
         try {
-            console.log('🔄 [Background] Forwarding proxy request to Content Script');
-            console.log('🔄 [Background] Request data:', requestData);
-            console.log('🔄 [Background] Target tab ID:', specifiedTabId);
+// debugLog('🔄 [Background] Forwarding proxy request to Content Script');
+// debugLog('🔄 [Background] Request data:', requestData);
+// debugLog('🔄 [Background] Target tab ID:', specifiedTabId);
             const api = typeof browser !== 'undefined' ? browser : chrome;
 
             let activeTab;
@@ -549,7 +561,7 @@ class BackgroundService {
             if (specifiedTabId) {
                 try {
                     activeTab = await api.tabs.get(specifiedTabId);
-                    console.log('✅ [Background] Found specified tab:', activeTab.id, activeTab.url);
+// debugLog('✅ [Background] Found specified tab:', activeTab.id, activeTab.url);
                 } catch (e) {
                     console.warn(`⚠️ [Background] Specified tab ${specifiedTabId} not found:`, e.message);
                 }
@@ -563,10 +575,10 @@ class BackgroundService {
                     throw new Error('No active tab found to execute request');
                 }
                 activeTab = tabs[0];
-                console.log('📍 [Background] Using active tab:', activeTab.id, activeTab.url);
+// debugLog('📍 [Background] Using active tab:', activeTab.id, activeTab.url);
             }
 
-            console.log(`🎯 [Background] Target Tab: ID=${activeTab.id}, URL=${activeTab.url}`);
+// debugLog(`🎯 [Background] Target Tab: ID=${activeTab.id}, URL=${activeTab.url}`);
 
             // Check if URL is restricted (no content script)
             if (activeTab.url.startsWith('chrome://') || activeTab.url.startsWith('edge://') || activeTab.url.startsWith('about:') || activeTab.url.startsWith('moz-extension://')) {
@@ -576,19 +588,19 @@ class BackgroundService {
 
             // Helper to send message
             const sendMessageToTab = async () => {
-                console.log('📤 [Background] Sending executeRequest to tab', activeTab.id);
+// debugLog('📤 [Background] Sending executeRequest to tab', activeTab.id);
                 const response = await api.tabs.sendMessage(activeTab.id, {
                     action: 'executeRequest',
                     data: requestData
                 });
-                console.log('📥 [Background] Received response from content script:', response);
+// debugLog('📥 [Background] Received response from content script:', response);
                 return response;
             };
 
             try {
                 // Try sending message first
                 const result = await sendMessageToTab();
-                console.log('✅ [Background] Proxy request successful');
+// debugLog('✅ [Background] Proxy request successful');
                 return result;
             } catch (error) {
                 console.error('❌ [Background] sendMessage failed:', error.message);
@@ -598,7 +610,7 @@ class BackgroundService {
                     error.message.includes('Could not establish connection');
 
                 if (isConnectionError && !activeTab.url.startsWith('about:') && !activeTab.url.startsWith('chrome')) {
-                    console.log('⚠️ [Background] Content script disconnected. Attempting lazy injection...');
+// debugLog('⚠️ [Background] Content script disconnected. Attempting lazy injection...');
 
                     // Inject script dependencies in order
                     const scripts = [
@@ -614,7 +626,7 @@ class BackgroundService {
 
                     for (const file of scripts) {
                         try {
-                            console.log(`💉 [Background] Injecting ${file}...`);
+// debugLog(`💉 [Background] Injecting ${file}...`);
                             if (api.scripting) {
                                 await api.scripting.executeScript({
                                     target: { tabId: activeTab.id },
@@ -632,9 +644,9 @@ class BackgroundService {
                     // Wait a moment for script to init
                     await new Promise(r => setTimeout(r, 500));
 
-                    console.log('🔄 [Background] Retrying proxy request after injection...');
+// debugLog('🔄 [Background] Retrying proxy request after injection...');
                     const result = await sendMessageToTab();
-                    console.log('✅ [Background] Retry successful');
+// debugLog('✅ [Background] Retry successful');
                     return result;
 
                 } else {
@@ -774,7 +786,7 @@ class BackgroundService {
         chrome.storage.onChanged.addListener((changes, namespace) => {
             if (namespace === 'local' && changes.userSettings) {
                 this.settings = changes.userSettings.newValue;
-                console.log('Settings updated from storage');
+// debugLog('Settings updated from storage');
             }
         });
     }
@@ -888,12 +900,12 @@ function getExtensionAPI() {
 
 // Service worker installation and activation
 self.addEventListener('install', (event) => {
-    console.log('🔧 Service worker installing...');
+// debugLog('🔧 Service worker installing...');
     self.skipWaiting(); // Immediately activate new service worker
 });
 
 self.addEventListener('activate', (event) => {
-    console.log('✅ Service worker activated');
+// debugLog('✅ Service worker activated');
     event.waitUntil(
         clients.claim() // Take control of all clients immediately
     );
@@ -911,7 +923,7 @@ self.activeProxyTargets = activeProxyTargets;
         const webRequest = api.webRequest || (typeof chrome !== 'undefined' ? chrome.webRequest : null);
 
         if (webRequest && webRequest.onBeforeSendHeaders) {
-            console.log('✅ [TOP-LEVEL] Setting up webRequest listeners');
+// debugLog('✅ [TOP-LEVEL] Setting up webRequest listeners');
 
             // Listener 1: Capture ALL request headers (including cookies) for API discovery
             webRequest.onBeforeSendHeaders.addListener(
@@ -923,20 +935,20 @@ self.activeProxyTargets = activeProxyTargets;
 
                     // Skip non-XHR/Fetch requests (only capture API calls)
                     if (details.type !== 'xmlhttprequest' && details.type !== 'fetch' && details.type !== 'other') {
-                        console.log(`⏭️ [HEADERS] Skipping non-API request type: ${details.type} for ${details.url}`);
+// debugLog(`⏭️ [HEADERS] Skipping non-API request type: ${details.type} for ${details.url}`);
                         return;
                     }
 
-                    console.log(`🎯 [HEADERS] Intercepted ${details.type} request: ${details.method} ${details.url}`);
+// debugLog(`🎯 [HEADERS] Intercepted ${details.type} request: ${details.method} ${details.url}`);
 
                     // Check for Cookie header in this request
                     const hasCookie = details.requestHeaders?.some(h => h.name.toLowerCase() === 'cookie');
-                    console.log(`🍪 [HEADERS] Cookie present in webRequest: ${hasCookie}`);
+// debugLog(`🍪 [HEADERS] Cookie present in webRequest: ${hasCookie}`);
 
                     // Cache the full headers for this request
                     if (backgroundService && backgroundService.cacheRequestHeaders) {
                         backgroundService.cacheRequestHeaders(details.method, details.url, details.requestHeaders);
-                        console.log(`📦 [HEADERS] Cached headers for ${details.method} ${details.url}`);
+// debugLog(`📦 [HEADERS] Cached headers for ${details.method} ${details.url}`);
                     } else {
                         console.warn(`⚠️ [HEADERS] backgroundService not available!`);
                     }
@@ -958,7 +970,7 @@ self.activeProxyTargets = activeProxyTargets;
                         if (headers[i].name === 'X-FW-Proxy') {
                             hasProxyMarker = true;
                             headers.splice(i, 1); // Remove marker
-                            console.log('🎯 [PROXY] Intercepted request with marker:', details.url);
+// debugLog('🎯 [PROXY] Intercepted request with marker:', details.url);
                             break;
                         }
                     }
@@ -971,24 +983,24 @@ self.activeProxyTargets = activeProxyTargets;
                         const origin = targetUrl.origin;
 
                         if (isTarget && !hasProxyMarker) {
-                            console.log(`🔎 [PROXY] Intercepted Preflight/Related request: ${details.method} ${details.url}`);
+// debugLog(`🔎 [PROXY] Intercepted Preflight/Related request: ${details.method} ${details.url}`);
                         }
 
                         // Rewrite Origin
                         let originFound = false;
                         for (const h of headers) {
                             if (h.name.toLowerCase() === 'origin') {
-                                console.log(`🔄 [PROXY] Rewriting Origin: ${h.value} -> ${origin}`);
+// debugLog(`🔄 [PROXY] Rewriting Origin: ${h.value} -> ${origin}`);
                                 h.value = origin;
                                 originFound = true;
                             } else if (h.name.toLowerCase() === 'referer') {
-                                console.log(`🔄 [PROXY] Rewriting Referer: ${h.value} -> ${targetUrl.href}`);
+// debugLog(`🔄 [PROXY] Rewriting Referer: ${h.value} -> ${targetUrl.href}`);
                                 h.value = targetUrl.href;
                             }
                         }
 
                         if (!originFound) {
-                            console.log(`➕ [PROXY] Adding Origin: ${origin}`);
+// debugLog(`➕ [PROXY] Adding Origin: ${origin}`);
                             headers.push({ name: 'Origin', value: origin });
                             // Also ensure Referer is set if not present
                             if (!headers.some(h => h.name.toLowerCase() === 'referer')) {
@@ -1028,14 +1040,14 @@ try {
 
 // Handle service worker wakeup
 chrome.runtime.onStartup.addListener(() => {
-    console.log('🚀 Extension startup');
+// debugLog('🚀 Extension startup');
     if (!backgroundService) {
         backgroundService = new BackgroundService();
     }
 });
 
 chrome.runtime.onInstalled.addListener((details) => {
-    console.log('📦 Extension installed/updated:', details.reason);
+// debugLog('📦 Extension installed/updated:', details.reason);
     if (!backgroundService) {
         backgroundService = new BackgroundService();
     }

@@ -4,16 +4,16 @@
  */
 
 try {
-    console.log('[FW Interceptor] Script execution started');
+    // Verbose logging removed - enable debugMode in settings to see detailed logs
 
     (function () {
         // Avoid double injection
         if (window.__ferretWatchInterceptorInjected) {
-            console.log('[FW Interceptor] Already injected - skipping');
+            // Already injected - skipping
             return;
         }
         window.__ferretWatchInterceptorInjected = true;
-        console.log('[FW Interceptor] Injection guard set');
+        // Injection guard set
 
         const originalFetch = window.fetch;
         const originalXHR = window.XMLHttpRequest;
@@ -34,7 +34,7 @@ try {
             return;
         }
 
-        console.log(`[FW Interceptor] Captured ${type}: ${method} ${url}`);
+        // Captured API call - sending to content script for processing
 
         // Serialize body safely - don't send non-cloneable objects
         let serializedBody = null;
@@ -236,6 +236,8 @@ try {
         this._fw_headers = {};
         // CRITICAL: Forward ALL parameters to maintain compatibility
         // Signature: open(method, url, async=true, user=null, password=null)
+        // Note: If page uses synchronous XHR (async=false), browser will show deprecation warning.
+        // We must pass through as-is to avoid breaking page functionality.
         return open.call(this, method, url, async, user, password);
     };
 
@@ -261,82 +263,107 @@ try {
             console.debug('[FW Interceptor] XHR send notification error:', e);
         }
 
-        // Set up response interception
+        // Set up response interception BEFORE calling send (critical for synchronous XHR)
         const xhr = this;
         const originalOnReadyStateChange = xhr.onreadystatechange;
         const originalOnLoad = xhr.onload;
 
-        // Intercept readystatechange
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === 4 && requestUrl) { // DONE
+        // Track if we've already sent the response notification (to avoid duplicates)
+        let responseSent = false;
+
+        // Helper to send response notification
+        const sendResponseNotification = () => {
+            if (responseSent || !requestUrl) return;
+            responseSent = true;
+
+            try {
+                const requestDuration = Date.now() - requestStartTime;
+
+                // Extract response headers
+                const responseHeaders = {};
                 try {
-                    const requestDuration = Date.now() - requestStartTime;
-
-                    // Extract response headers
-                    const responseHeaders = {};
-                    try {
-                        const headersString = xhr.getAllResponseHeaders();
-                        if (headersString) {
-                            const headerLines = headersString.trim().split(/[\r\n]+/);
-                            headerLines.forEach(line => {
-                                const parts = line.split(': ');
-                                const key = parts.shift();
-                                const value = parts.join(': ');
-                                if (key) responseHeaders[key] = value;
-                            });
-                        }
-                    } catch (e) {
-                        console.debug('[FW Interceptor] Error extracting XHR response headers:', e);
+                    const headersString = xhr.getAllResponseHeaders();
+                    if (headersString) {
+                        const headerLines = headersString.trim().split(/[\r\n]+/);
+                        headerLines.forEach(line => {
+                            const parts = line.split(': ');
+                            const key = parts.shift();
+                            const value = parts.join(': ');
+                            if (key) responseHeaders[key] = value;
+                        });
                     }
-
-                    // Send response notification
-                    window.postMessage({
-                        type: 'FERRETWATCH_API_RESPONSE',
-                        data: {
-                            timestamp: Date.now(),
-                            requestStartTime: requestStartTime,
-                            duration: requestDuration,
-                            type: 'xhr',
-                            url: requestUrl,
-                            method: requestMethod || 'GET',
-                            status: xhr.status,
-                            statusText: xhr.statusText,
-                            responseHeaders: responseHeaders,
-                            responseBody: xhr.responseText || '',
-                            responseSize: (xhr.responseText || '').length
-                        }
-                    }, '*');
                 } catch (e) {
-                    console.debug('[FW Interceptor] XHR response interception error:', e);
+                    console.debug('[FW Interceptor] Error extracting XHR response headers:', e);
                 }
+
+                // Send response notification
+                window.postMessage({
+                    type: 'FERRETWATCH_API_RESPONSE',
+                    data: {
+                        timestamp: Date.now(),
+                        requestStartTime: requestStartTime,
+                        duration: requestDuration,
+                        type: 'xhr',
+                        url: requestUrl,
+                        method: requestMethod || 'GET',
+                        status: xhr.status,
+                        statusText: xhr.statusText,
+                        responseHeaders: responseHeaders,
+                        responseBody: xhr.responseText || '',
+                        responseSize: (xhr.responseText || '').length
+                    }
+                }, '*');
+            } catch (e) {
+                console.debug('[FW Interceptor] XHR response interception error:', e);
+            }
+        };
+
+        // Wrap readystatechange handler
+        xhr.onreadystatechange = function() {
+            // Send notification when request completes
+            if (xhr.readyState === 4) {
+                sendResponseNotification();
             }
 
             // Call original handler if exists
             if (originalOnReadyStateChange) {
                 try {
-                    originalOnReadyStateChange.apply(xhr, arguments);
+                    return originalOnReadyStateChange.apply(this, arguments);
                 } catch (e) {
                     console.debug('[FW Interceptor] Error in original onreadystatechange:', e);
+                    throw e; // Re-throw to maintain error behavior
                 }
             }
         };
 
-        // Also intercept onload as a fallback
+        // Wrap onload handler as fallback
         xhr.onload = function() {
-            // onreadystatechange should have already handled this, but just in case
+            sendResponseNotification();
+
             if (originalOnLoad) {
                 try {
-                    originalOnLoad.apply(xhr, arguments);
+                    return originalOnLoad.apply(this, arguments);
                 } catch (e) {
                     console.debug('[FW Interceptor] Error in original onload:', e);
+                    throw e; // Re-throw to maintain error behavior
                 }
             }
         };
 
-        return send.apply(this, arguments);
+        // Call original send - for synchronous XHR, this will complete before returning
+        const result = send.apply(this, arguments);
+
+        // For synchronous XHR (async parameter was false in .open()), the request is complete now
+        // Check if it's synchronous and handle response
+        if (xhr.readyState === 4) {
+            // Synchronous XHR - already complete
+            sendResponseNotification();
+        }
+
+        return result;
     };
 
-        console.log('[FerretWatch] API Interceptor Active');
+        // API Interceptor Active
     })();
 
 } catch (err) {

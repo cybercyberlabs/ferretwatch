@@ -131,7 +131,7 @@ function safeLog(type, secret, context = '') {
     const maskedSecret = maskSecret(secret);
     const secretHash = hashSecret(secret);
     
-    console.log(`🔑 Found ${type}: ${maskedSecret} (${secretHash}) ${context}`);
+    // Secret found and masked for display
 }
 
 // Export for use in other modules

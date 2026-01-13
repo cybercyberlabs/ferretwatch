@@ -22,11 +22,11 @@
             if (api.storage) {
                 const result = await api.storage.local.get(['whitelistedDomains']);
                 whitelistedDomains = result.whitelistedDomains || [];
-                console.log('[FW Content] Whitelist loaded:', whitelistedDomains);
+                // Whitelist loaded successfully
                 return whitelistedDomains;
             }
         } catch (error) {
-            console.log('[FW Content] Could not load whitelist, using empty list:', error);
+            // Could not load whitelist, using empty list
             whitelistedDomains = [];
         }
         return whitelistedDomains;
@@ -46,7 +46,7 @@
                 return currentDomain === domain;
             }
         });
-        console.log(`[FW Content] Domain whitelist check for "${currentDomain}": ${isWhitelisted}`);
+        // Domain whitelist check complete
         return isWhitelisted;
     }
 

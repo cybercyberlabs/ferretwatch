@@ -29,7 +29,7 @@
      * @param {Object} apiCall - API call data from interceptor
      */
     function sendApiCallToBackground(apiCall) {
-        console.log(`[FW Content] API call received from interceptor: ${apiCall.method} ${apiCall.url}`);
+        // Removed verbose logging - use debugLog for detailed API tracking
         debugLog(`[Content] API call captured: ${apiCall.method} ${apiCall.url}`);
 
         const message = {
@@ -40,7 +40,7 @@
         if (typeof chrome !== 'undefined' && chrome.runtime) {
             chrome.runtime.sendMessage(message)
                 .then(() => {
-                    console.log('[FW Content] Message sent to background successfully');
+                    // Success - no logging needed at info level
                 })
                 .catch(err => {
                     console.error('[FW Content] Error sending to background:', err);
@@ -48,7 +48,7 @@
         } else if (typeof browser !== 'undefined' && browser.runtime) {
             browser.runtime.sendMessage(message)
                 .then(() => {
-                    console.log('[FW Content] Message sent to background successfully');
+                    // Success - no logging needed at info level
                 })
                 .catch(err => {
                     console.error('[FW Content] Error sending to background:', err);
@@ -61,7 +61,7 @@
      * @param {Object} apiResponse - API response data from interceptor
      */
     function sendApiResponseToBackground(apiResponse) {
-        console.log(`[FW Content] API response received from interceptor: ${apiResponse.status} ${apiResponse.method} ${apiResponse.url}`);
+        // Removed verbose logging - use debugLog for detailed API tracking
         debugLog(`[Content] API response captured: ${apiResponse.status} ${apiResponse.method} ${apiResponse.url}`);
 
         const message = {
@@ -74,13 +74,13 @@
                 if (chrome.runtime.lastError) {
                     console.error('[FW Content] Error sending response to background:', chrome.runtime.lastError);
                 } else {
-                    console.log('[FW Content] Response sent to background successfully');
+                    // Success - no logging needed at info level
                 }
             });
         } else if (typeof browser !== 'undefined' && browser.runtime) {
             browser.runtime.sendMessage(message)
                 .then(() => {
-                    console.log('[FW Content] Response sent to background successfully');
+                    // Success - no logging needed at info level
                 })
                 .catch(err => {
                     console.error('[FW Content] Error sending response to background:', err);
@@ -112,7 +112,7 @@
      */
     function initializeMessageListener() {
         window.addEventListener('message', handleWindowMessage);
-        console.log('[FW Content] Message listener registered for window.postMessage');
+        debugLog('[FW Content] Message listener registered for window.postMessage');
     }
 
     /**
@@ -120,7 +120,7 @@
      */
     function removeMessageListener() {
         window.removeEventListener('message', handleWindowMessage);
-        console.log('[FW Content] Message listener removed');
+        debugLog('[FW Content] Message listener removed');
     }
 
     // Expose public API

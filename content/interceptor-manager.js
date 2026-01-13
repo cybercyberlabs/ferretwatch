@@ -27,27 +27,27 @@
      * @returns {boolean} True if injection was successful or already injected
      */
     function injectInterceptor(whitelistChecker) {
-        console.log('[FW Content] injectInterceptor() called');
+        debugLog('[FW Content] injectInterceptor() called');
 
         // Check whitelist
         if (whitelistChecker && whitelistChecker()) {
-            console.log('[FW Content] Skipping interceptor injection - domain is whitelisted');
+            debugLog('[FW Content] Skipping interceptor injection - domain is whitelisted');
             return false;
         }
 
         // Check if already injected
         if (interceptorInjected) {
-            console.log('[FW Content] Interceptor already injected by this content script - skipping');
+            debugLog('[FW Content] Interceptor already injected by this content script - skipping');
             return true;
         }
 
         try {
-            console.log('[FW Content] Creating interceptor script element...');
+            debugLog('[FW Content] Creating interceptor script element...');
             const script = document.createElement('script');
             script.src = api.runtime.getURL('utils/network-interceptor.js');
 
             script.onload = function() {
-                console.log('[FW Content] Interceptor script loaded and executed');
+                debugLog('[FW Content] Interceptor script loaded and executed');
                 this.remove();
             };
 
@@ -57,7 +57,7 @@
 
             (document.head || document.documentElement).appendChild(script);
             interceptorInjected = true;
-            console.log('[FW Content] Interceptor script element appended to DOM');
+            debugLog('[FW Content] Interceptor script element appended to DOM');
             debugLog('Network interceptor injected');
             return true;
         } catch (e) {
@@ -74,17 +74,17 @@
      */
     async function injectInterceptorEarly(loadWhitelistFn, whitelistChecker) {
         try {
-            console.log('[FW Content] Early initialization at document_start');
+            debugLog('[FW Content] Early initialization at document_start');
             await loadWhitelistFn();
 
             if (whitelistChecker()) {
-                console.log('[FW Content] Domain is whitelisted - skipping interceptor injection');
+                debugLog('[FW Content] Domain is whitelisted - skipping interceptor injection');
                 return false;
             }
 
             // Inject interceptor before any page scripts can run
             const result = injectInterceptor(whitelistChecker);
-            console.log('[FW Content] Interceptor injected at document_start');
+            debugLog('[FW Content] Interceptor injected at document_start');
             return result;
         } catch (error) {
             console.error('[FW Content] Early injection error:', error);

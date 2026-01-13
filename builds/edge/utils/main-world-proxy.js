@@ -13,15 +13,12 @@
 
     // Prevent double injection
     if (window.__ferretWatchProxyLoaded) {
-        console.log('[FW Proxy] Already loaded, skipping');
+        // Already loaded, skipping
         return;
     }
     window.__ferretWatchProxyLoaded = true;
 
-    // Log the actual page location to verify we're in the right context
-    console.log('[FW Proxy] Main world proxy initialized');
-    console.log('[FW Proxy] Running in context:', window.location.href);
-    console.log('[FW Proxy] Document location:', document.location.href);
+    // Main world proxy initialized in page context
 
     /**
      * Execute a proxied fetch request
@@ -37,8 +34,7 @@
                 // Use document.location instead of window.location for more reliable base URL
                 const baseUrl = document.location.href;
                 absoluteUrl = new URL(url, baseUrl).href;
-                console.log(`[FW Proxy] Resolved relative URL: ${url} -> ${absoluteUrl}`);
-                console.log(`[FW Proxy] Base URL used: ${baseUrl}`);
+                // Resolved relative URL to absolute
             }
         } catch (e) {
             console.error(`[FW Proxy] Failed to parse URL: ${url}`, e);
@@ -46,13 +42,13 @@
             try {
                 const origin = document.location.origin;
                 absoluteUrl = origin + url;
-                console.log(`[FW Proxy] Fallback resolution: ${url} -> ${absoluteUrl}`);
+                // Fallback resolution used
             } catch (e2) {
                 console.error(`[FW Proxy] Fallback also failed:`, e2);
             }
         }
 
-        console.log(`[FW Proxy] Executing request ${requestId}: ${options.method} ${absoluteUrl}`);
+        // Executing proxied request
 
         const dispatch = (data) => {
             window.dispatchEvent(new CustomEvent(requestId, { detail: data }));
@@ -82,12 +78,12 @@
             // Try with credentials first
             try {
                 response = await makeRequest('include');
-                console.log(`[FW Proxy] Request succeeded with credentials: ${response.status}`);
+                // Request succeeded with credentials
             } catch (credError) {
                 console.warn(`[FW Proxy] Request with credentials failed, retrying without:`, credError.message);
                 // Fallback: try without credentials
                 response = await makeRequest('omit');
-                console.log(`[FW Proxy] Request succeeded without credentials: ${response.status}`);
+                // Request succeeded without credentials
             }
 
             // Read response body
@@ -150,6 +146,6 @@
         await executeProxyRequest(requestId, url, options);
     });
 
-    console.log('[FW Proxy] Event listener registered for ferretwatch-proxy-request');
+    // Event listener registered for proxy requests
 
 })();
