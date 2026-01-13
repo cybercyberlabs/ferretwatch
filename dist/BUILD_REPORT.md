@@ -1,6 +1,6 @@
 # FerretWatch Build Report
 
-**Build Date:** Tue Jan 13 02:27:10 PM IST 2026
+**Build Date:** Tue Jan 13 03:15:06 PM IST 2026
 **Version:** 2.3.0
 **Build Tools:**
 - Terser: true
@@ -8,9 +8,9 @@
 
 ## Generated Packages
 
-- **firefox**: ferretwatch-firefox-v2.3.0.zip (182K)
-- **chrome**: ferretwatch-chrome-v2.3.0.zip (182K)
-- **edge**: ferretwatch-edge-v2.3.0.zip (182K)
+- **firefox**: ferretwatch-firefox-v2.3.0.zip (191K)
+- **chrome**: ferretwatch-chrome-v2.3.0.zip (191K)
+- **edge**: ferretwatch-edge-v2.3.0.zip (191K)
 
 ## Build Configuration
 

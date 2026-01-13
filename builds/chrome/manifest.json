@@ -32,7 +32,14 @@
         "utils/settings.js",
         "utils/scanner.js",
         "utils/endpoint-scanner.js",
-        "content.js"
+        "content/constants.js",
+        "content/utils.js",
+        "content/whitelist-checker.js",
+        "content/interceptor-manager.js",
+        "content/message-handler.js",
+        "content/notification-ui.js",
+        "content/scanner-manager.js",
+        "content/index.js"
       ],
       "run_at": "document_start"
     }
