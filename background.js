@@ -116,9 +116,18 @@ class BackgroundService {
                     break;
 
                 case 'API_CALL_CAPTURED':
-                    this.handleApiCall(message.data, sender.tab?.id);
+                    this.handleApiCall(message.data, sender.tab?.id, sender.tab?.url);
                     sendResponse({ success: true });
                     break;
+
+                case 'API_RESPONSE_CAPTURED':
+                    this.handleApiResponse(message.data, sender.tab?.id);
+                    sendResponse({ success: true });
+                    break;
+
+                case 'REPLAY_REQUEST':
+                    this.replayRequest(message.data).then(sendResponse);
+                    return true;
 
                 case 'PROXY_REQUEST':
                     // Must return true to keep channel open for async fetch
@@ -178,13 +187,22 @@ class BackgroundService {
         await this.updateBadge(tabId, newResults.length);
     }
 
-    handleApiCall(apiData, tabId) {
+    handleApiCall(apiData, tabId, tabUrl) {
         if (!tabId) {
             console.warn('[API] No tabId provided for API call:', apiData.url);
             return;
         }
 
         console.log(`[API] Storing endpoint for tab ${tabId}: ${apiData.method} ${apiData.url}`);
+
+        // Store the tab origin for resolving relative URLs during replay
+        if (tabUrl) {
+            try {
+                apiData.origin = new URL(tabUrl).origin;
+            } catch (e) {
+                console.warn('[API] Could not parse tab URL for origin:', tabUrl);
+            }
+        }
 
         const currentEndpoints = this.apiEndpoints.get(tabId) || [];
 
@@ -217,11 +235,147 @@ class BackgroundService {
                 console.log(`⚠️ [API] No cached headers found for ${cacheKey} - may have timed out or not captured yet`);
             }
 
+            // Mark as live request with source
+            apiData.source = 'live';
+            apiData.response = null; // Will be filled when response arrives
+
             currentEndpoints.push(apiData);
             this.apiEndpoints.set(tabId, currentEndpoints);
 
             // Notify any open API Explorer tabs about the new endpoint
             this.notifyExplorerTabs(tabId, apiData);
+        }
+    }
+
+    /**
+     * Handle API response and update the corresponding request
+     */
+    handleApiResponse(responseData, tabId) {
+        if (!tabId) {
+            console.warn('[API] No tabId provided for API response:', responseData.url);
+            return;
+        }
+
+        console.log(`[API] Received response for tab ${tabId}: ${responseData.status} ${responseData.method} ${responseData.url}`);
+
+        const currentEndpoints = this.apiEndpoints.get(tabId) || [];
+
+        // Find the matching request
+        const endpoint = currentEndpoints.find(e =>
+            e.method === responseData.method && e.url === responseData.url
+        );
+
+        if (endpoint) {
+            // Update endpoint with response data
+            endpoint.response = {
+                status: responseData.status,
+                statusText: responseData.statusText,
+                responseHeaders: responseData.responseHeaders,
+                responseBody: responseData.responseBody,
+                responseSize: responseData.responseSize,
+                duration: responseData.duration,
+                error: responseData.error
+            };
+
+            // Update storage
+            this.apiEndpoints.set(tabId, currentEndpoints);
+
+            // Notify explorer tabs
+            this.notifyExplorerTabs(tabId, endpoint);
+
+            console.log(`✅ [API] Updated endpoint with response data`);
+        } else {
+            console.warn(`⚠️ [API] No matching request found for response: ${responseData.method} ${responseData.url}`);
+
+            // If no matching request found, create a new entry (edge case)
+            const newEndpoint = {
+                method: responseData.method,
+                url: responseData.url,
+                type: responseData.type,
+                timestamp: responseData.timestamp,
+                headers: {},
+                body: null,
+                source: 'live',
+                response: {
+                    status: responseData.status,
+                    statusText: responseData.statusText,
+                    responseHeaders: responseData.responseHeaders,
+                    responseBody: responseData.responseBody,
+                    responseSize: responseData.responseSize,
+                    duration: responseData.duration,
+                    error: responseData.error
+                }
+            };
+
+            currentEndpoints.push(newEndpoint);
+            this.apiEndpoints.set(tabId, currentEndpoints);
+            this.notifyExplorerTabs(tabId, newEndpoint);
+        }
+    }
+
+    /**
+     * Replay/send a request
+     */
+    async replayRequest(requestData) {
+        console.log(`[API] Replaying request: ${requestData.method} ${requestData.url}`);
+        console.log(`[API] Request origin: ${requestData.origin || 'NOT SET'}`);
+        console.log(`[API] Full request data:`, requestData);
+
+        const startTime = Date.now();
+
+        try {
+            // Resolve relative URLs to absolute using the origin
+            let absoluteUrl = requestData.url;
+            if (requestData.origin && !requestData.url.startsWith('http://') && !requestData.url.startsWith('https://')) {
+                try {
+                    absoluteUrl = new URL(requestData.url, requestData.origin).href;
+                    console.log(`[API] Resolved relative URL: ${requestData.url} -> ${absoluteUrl}`);
+                } catch (e) {
+                    console.warn('[API] Could not resolve relative URL:', requestData.url, e);
+                }
+            } else if (!requestData.url.startsWith('http://') && !requestData.url.startsWith('https://')) {
+                console.warn(`[API] ⚠️ Relative URL detected but NO ORIGIN SET: ${requestData.url}`);
+                console.warn(`[API] This will cause a NetworkError. Origin should have been stored when request was captured.`);
+            }
+
+            console.log(`[API] Final URL to fetch: ${absoluteUrl}`);
+
+            const response = await fetch(absoluteUrl, {
+                method: requestData.method,
+                headers: requestData.headers || {},
+                body: requestData.body || null,
+                credentials: 'omit', // Don't send cookies by default for security
+                mode: 'cors'
+            });
+
+            const duration = Date.now() - startTime;
+            const body = await response.text();
+
+            // Extract response headers
+            const headers = {};
+            for (const [key, value] of response.headers.entries()) {
+                headers[key] = value;
+            }
+
+            console.log(`✅ [API] Request completed: ${response.status} in ${duration}ms`);
+
+            return {
+                success: true,
+                status: response.status,
+                statusText: response.statusText,
+                headers: headers,
+                body: body,
+                duration: duration
+            };
+        } catch (error) {
+            const duration = Date.now() - startTime;
+            console.error(`❌ [API] Request failed:`, error);
+
+            return {
+                success: false,
+                error: error.message,
+                duration: duration
+            };
         }
     }
 
@@ -315,9 +469,27 @@ class BackgroundService {
 
             console.log(`📊 [Background] Analysis: ${unused.length} unused, ${used.length} used`);
 
+            // Get tab URL to provide origin for resolving relative URLs
+            let tabOrigin = null;
+            try {
+                const tab = await api.tabs.get(targetTabId);
+                if (tab && tab.url) {
+                    tabOrigin = new URL(tab.url).origin;
+                    console.log(`🌐 [Background] Tab origin for URL resolution: ${tabOrigin}`);
+                }
+            } catch (e) {
+                console.warn('[Background] Could not get tab URL for origin:', e);
+            }
+
+            // Add origin to all discovered endpoints for replay support
+            const discoveredWithOrigin = scanResponse.discovered.map(ep => ({
+                ...ep,
+                origin: tabOrigin
+            }));
+
             return {
                 success: true,
-                discovered: scanResponse.discovered,
+                discovered: discoveredWithOrigin,
                 unused: unused,
                 used: used,
                 stats: {
@@ -347,8 +519,8 @@ class BackgroundService {
             const allTabs = await (typeof browser !== 'undefined' ? browser : chrome).tabs.query({});
 
             for (const tab of allTabs) {
-                // Check if this is an explorer page for the source tab
-                if (tab.url && tab.url.includes('popup/explorer.html') && tab.url.includes(`tabId=${sourceTabId}`)) {
+                // Check if this is an explorer page for the source tab (support both v1 and v2)
+                if (tab.url && (tab.url.includes('popup/explorer.html') || tab.url.includes('popup/explorer-v2.html')) && tab.url.includes(`tabId=${sourceTabId}`)) {
                     // Send update to the explorer tab
                     (typeof browser !== 'undefined' ? browser : chrome).tabs.sendMessage(tab.id, {
                         type: 'NEW_API_ENDPOINT',

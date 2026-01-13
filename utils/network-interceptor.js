@@ -103,19 +103,22 @@ try {
 
     // 1. Monkey Patch fetch
     window.fetch = async function (...args) {
+        const requestStartTime = Date.now();
+        let requestUrl, requestMethod, requestBody, requestHeaders;
+
         try {
             const [resource, config] = args;
-            let url = resource;
-            let method = 'GET';
-            let body = null;
-            let headers = null;
+            requestUrl = resource;
+            requestMethod = 'GET';
+            requestBody = null;
+            requestHeaders = null;
 
             if (resource instanceof Request) {
-                url = resource.url;
-                method = resource.method;
+                requestUrl = resource.url;
+                requestMethod = resource.method;
                 // Extract headers from Request object
                 try {
-                    headers = resource.headers;
+                    requestHeaders = resource.headers;
                 } catch (e) {
                     console.debug('[FW Interceptor] Could not extract headers from Request:', e);
                 }
@@ -123,14 +126,14 @@ try {
             }
 
             if (config) {
-                if (config.method) method = config.method;
-                if (config.body) body = config.body;
-                if (config.headers) headers = config.headers;
+                if (config.method) requestMethod = config.method;
+                if (config.body) requestBody = config.body;
+                if (config.headers) requestHeaders = config.headers;
             }
 
-            // Notify FerretWatch (wrapped in try-catch to never break the fetch)
+            // Notify FerretWatch of request (wrapped in try-catch to never break the fetch)
             try {
-                notify('fetch', typeof url === 'string' ? url : url.toString(), method, body, headers);
+                notify('fetch', typeof requestUrl === 'string' ? requestUrl : requestUrl.toString(), requestMethod, requestBody, requestHeaders);
             } catch (notifyError) {
                 // Silently fail - don't break the fetch call
                 console.debug('[FW Interceptor] Notify error:', notifyError);
@@ -140,7 +143,85 @@ try {
             console.debug('[FW Interceptor] Fetch interception error:', e);
         }
 
-        return originalFetch.apply(this, args);
+        // Execute the original fetch and intercept response
+        const responsePromise = originalFetch.apply(this, args);
+
+        // Intercept response asynchronously without blocking
+        responsePromise.then(response => {
+            try {
+                const requestDuration = Date.now() - requestStartTime;
+                const urlString = typeof requestUrl === 'string' ? requestUrl : requestUrl.toString();
+
+                // Clone response to read body without consuming it
+                const responseClone = response.clone();
+
+                // Extract response headers
+                const responseHeaders = {};
+                try {
+                    for (const [key, value] of response.headers.entries()) {
+                        responseHeaders[key] = value;
+                    }
+                } catch (e) {
+                    console.debug('[FW Interceptor] Error extracting response headers:', e);
+                }
+
+                // Read response body asynchronously
+                responseClone.text().then(responseBody => {
+                    try {
+                        window.postMessage({
+                            type: 'FERRETWATCH_API_RESPONSE',
+                            data: {
+                                timestamp: Date.now(),
+                                requestStartTime: requestStartTime,
+                                duration: requestDuration,
+                                type: 'fetch',
+                                url: urlString,
+                                method: requestMethod || 'GET',
+                                status: response.status,
+                                statusText: response.statusText,
+                                responseHeaders: responseHeaders,
+                                responseBody: responseBody,
+                                responseSize: responseBody.length
+                            }
+                        }, '*');
+                    } catch (e) {
+                        console.debug('[FW Interceptor] Error sending response data:', e);
+                    }
+                }).catch(e => {
+                    console.debug('[FW Interceptor] Error reading response body:', e);
+                });
+            } catch (e) {
+                console.debug('[FW Interceptor] Response interception error:', e);
+            }
+        }).catch(e => {
+            // Fetch failed - still notify with error info
+            try {
+                const requestDuration = Date.now() - requestStartTime;
+                const urlString = typeof requestUrl === 'string' ? requestUrl : requestUrl.toString();
+
+                window.postMessage({
+                    type: 'FERRETWATCH_API_RESPONSE',
+                    data: {
+                        timestamp: Date.now(),
+                        requestStartTime: requestStartTime,
+                        duration: requestDuration,
+                        type: 'fetch',
+                        url: urlString,
+                        method: requestMethod || 'GET',
+                        status: 0,
+                        statusText: 'Network Error',
+                        error: e.message,
+                        responseHeaders: {},
+                        responseBody: '',
+                        responseSize: 0
+                    }
+                }, '*');
+            } catch (notifyError) {
+                console.debug('[FW Interceptor] Error notifying fetch failure:', notifyError);
+            }
+        });
+
+        return responsePromise;
     };
 
     // 2. Monkey Patch XHR
@@ -165,14 +246,93 @@ try {
     };
 
     XHR.prototype.send = function (body) {
+        const requestStartTime = Date.now();
+        const requestUrl = this._fw_url;
+        const requestMethod = this._fw_method;
+        const requestHeaders = this._fw_headers;
+
+        // Notify about the request
         try {
-            if (this._fw_url) {
-                notify('xhr', this._fw_url, this._fw_method, body, this._fw_headers);
+            if (requestUrl) {
+                notify('xhr', requestUrl, requestMethod, body, requestHeaders);
             }
         } catch (e) {
             // Silently fail - don't break the XHR call
             console.debug('[FW Interceptor] XHR send notification error:', e);
         }
+
+        // Set up response interception
+        const xhr = this;
+        const originalOnReadyStateChange = xhr.onreadystatechange;
+        const originalOnLoad = xhr.onload;
+
+        // Intercept readystatechange
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4 && requestUrl) { // DONE
+                try {
+                    const requestDuration = Date.now() - requestStartTime;
+
+                    // Extract response headers
+                    const responseHeaders = {};
+                    try {
+                        const headersString = xhr.getAllResponseHeaders();
+                        if (headersString) {
+                            const headerLines = headersString.trim().split(/[\r\n]+/);
+                            headerLines.forEach(line => {
+                                const parts = line.split(': ');
+                                const key = parts.shift();
+                                const value = parts.join(': ');
+                                if (key) responseHeaders[key] = value;
+                            });
+                        }
+                    } catch (e) {
+                        console.debug('[FW Interceptor] Error extracting XHR response headers:', e);
+                    }
+
+                    // Send response notification
+                    window.postMessage({
+                        type: 'FERRETWATCH_API_RESPONSE',
+                        data: {
+                            timestamp: Date.now(),
+                            requestStartTime: requestStartTime,
+                            duration: requestDuration,
+                            type: 'xhr',
+                            url: requestUrl,
+                            method: requestMethod || 'GET',
+                            status: xhr.status,
+                            statusText: xhr.statusText,
+                            responseHeaders: responseHeaders,
+                            responseBody: xhr.responseText || '',
+                            responseSize: (xhr.responseText || '').length
+                        }
+                    }, '*');
+                } catch (e) {
+                    console.debug('[FW Interceptor] XHR response interception error:', e);
+                }
+            }
+
+            // Call original handler if exists
+            if (originalOnReadyStateChange) {
+                try {
+                    originalOnReadyStateChange.apply(xhr, arguments);
+                } catch (e) {
+                    console.debug('[FW Interceptor] Error in original onreadystatechange:', e);
+                }
+            }
+        };
+
+        // Also intercept onload as a fallback
+        xhr.onload = function() {
+            // onreadystatechange should have already handled this, but just in case
+            if (originalOnLoad) {
+                try {
+                    originalOnLoad.apply(xhr, arguments);
+                } catch (e) {
+                    console.debug('[FW Interceptor] Error in original onload:', e);
+                }
+            }
+        };
+
         return send.apply(this, arguments);
     };
 

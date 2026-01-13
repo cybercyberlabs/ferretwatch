@@ -100,6 +100,7 @@
     window.addEventListener('message', function (event) {
         if (event.source !== window) return;
 
+        // Handle API call (request)
         if (event.data && event.data.type === 'FERRETWATCH_API_CALL') {
             const apiCall = event.data.data;
             console.log(`[FW Content] API call received from interceptor: ${apiCall.method} ${apiCall.url}`);
@@ -124,6 +125,35 @@
                     console.log('[FW Content] Message sent to background successfully');
                 }).catch(err => {
                     console.error('[FW Content] Error sending to background:', err);
+                });
+            }
+        }
+
+        // Handle API response
+        if (event.data && event.data.type === 'FERRETWATCH_API_RESPONSE') {
+            const apiResponse = event.data.data;
+            console.log(`[FW Content] API response received from interceptor: ${apiResponse.status} ${apiResponse.method} ${apiResponse.url}`);
+            debugLog(`[Content] API response captured: ${apiResponse.status} ${apiResponse.method} ${apiResponse.url}`);
+            // Send to background
+            if (typeof chrome !== 'undefined' && chrome.runtime) {
+                chrome.runtime.sendMessage({
+                    type: 'API_RESPONSE_CAPTURED',
+                    data: apiResponse
+                }, response => {
+                    if (chrome.runtime.lastError) {
+                        console.error('[FW Content] Error sending response to background:', chrome.runtime.lastError);
+                    } else {
+                        console.log('[FW Content] Response sent to background successfully');
+                    }
+                });
+            } else if (typeof browser !== 'undefined' && browser.runtime) {
+                browser.runtime.sendMessage({
+                    type: 'API_RESPONSE_CAPTURED',
+                    data: apiResponse
+                }).then(() => {
+                    console.log('[FW Content] Response sent to background successfully');
+                }).catch(err => {
+                    console.error('[FW Content] Error sending response to background:', err);
                 });
             }
         }

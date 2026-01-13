@@ -228,9 +228,9 @@ async function handleRescan() {
 // Open API Explorer in a new tab
 function openApiExplorer() {
     if (currentTab) {
-        // Pass the target tabId in the URL
+        // Pass the target tabId in the URL - using new v2 explorer
         browser.tabs.create({
-            url: `explorer.html?tabId=${currentTab.id}`
+            url: `explorer-v2.html?tabId=${currentTab.id}`
         });
     } else {
         console.error('No active tab to scan');
