@@ -5,6 +5,9 @@
 
 class EndpointScanner {
     constructor() {
+        // Variable tracking for URL assignments
+        this.urlVariables = new Map();
+
         // URL patterns to match
         this.patterns = [
             // Quoted strings starting with / or http
@@ -13,11 +16,17 @@ class EndpointScanner {
                 confidence: 0.6,
                 name: 'quoted-string'
             },
-            // Template literals
+            // Template literals (with limited interpolation)
             {
                 regex: /`((?:https?:)?\/[a-zA-Z0-9\/_\-\.%\?=&:\$\{\}]+)`/g,
                 confidence: 0.5, // Lower confidence due to variables
                 name: 'template-literal'
+            },
+            // Template literals with single variable at end (e.g., `/api/users/${id}`)
+            {
+                regex: /`((?:https?:)?\/[a-zA-Z0-9\/_\-\.%\?=&:]+)\/\$\{[a-zA-Z0-9_]+\}`/g,
+                confidence: 0.65,
+                name: 'template-literal-with-param'
             },
             // fetch() calls with method detection
             {
@@ -56,6 +65,45 @@ class EndpointScanner {
                 regex: /['"`](\/(?:v\d+\/)?(?:users?|accounts?|auth|admin|internal|debug|api)[a-zA-Z0-9\/_\-\.%\?=&:]*)['"`]/g,
                 confidence: 0.7,
                 name: 'restful-pattern'
+            },
+            // Variable assignments (const/let/var url = '...')
+            {
+                regex: /(?:const|let|var)\s+(\w+)\s*=\s*['"`]((?:https?:)?\/[a-zA-Z0-9\/_\-\.%\?=&:]+)['"`]/g,
+                confidence: 0.7,
+                name: 'variable-assignment',
+                isAssignment: true
+            },
+            // fetch with variable reference
+            {
+                regex: /fetch\s*\(\s*(\w+)(?:\s*[,)])/g,
+                confidence: 0.85,
+                name: 'fetch-variable',
+                isVariableRef: true
+            },
+            // axios with variable reference
+            {
+                regex: /axios\.(?:get|post|put|delete|patch)\s*\(\s*(\w+)(?:\s*[,)])/gi,
+                confidence: 0.85,
+                name: 'axios-variable',
+                isVariableRef: true
+            },
+            // Config object patterns (basic immediate context)
+            {
+                regex: /url\s*:\s*['"`]((?:https?:)?\/[a-zA-Z0-9\/_\-\.%\?=&:]+)['"`]/gi,
+                confidence: 0.75,
+                name: 'config-url-property'
+            },
+            // String concatenation patterns (baseUrl + path)
+            {
+                regex: /(?:baseUrl|apiUrl|API_URL)\s*\+\s*['"`](\/[a-zA-Z0-9\/_\-\.%\?=&:]+)['"`]/g,
+                confidence: 0.6,
+                name: 'string-concat-path'
+            },
+            // Common API base patterns in constants
+            {
+                regex: /(?:API_BASE|BASE_URL|API_URL)\s*=\s*['"`]((?:https?:)?\/[a-zA-Z0-9\/_\-\.%\?=&:]+)['"`]/gi,
+                confidence: 0.65,
+                name: 'api-base-constant'
             }
         ];
 
@@ -97,6 +145,7 @@ class EndpointScanner {
      */
     async scanPage() {
         this.discovered.clear();
+        this.urlVariables.clear();
 
         // Scan inline scripts
         this.scanInlineScripts();
@@ -203,9 +252,48 @@ class EndpointScanner {
 
             for (const match of matches) {
                 let url, method = null, payload = null;
+                let variableName = null;
 
-                // Handle different pattern types
-                if (pattern.methodInMatch) {
+                // Handle variable assignments - store and skip endpoint creation
+                if (pattern.isAssignment) {
+                    variableName = match[1]; // Variable name
+                    url = match[2]; // URL value
+
+                    if (url && this.isValidEndpoint(url)) {
+                        // Store variable -> URL mapping
+                        this.urlVariables.set(variableName, url);
+                    }
+                    continue; // Don't create endpoint entry for assignments
+                }
+
+                // Handle variable references - resolve from map
+                if (pattern.isVariableRef) {
+                    variableName = match[1]; // Variable name being referenced
+                    url = this.urlVariables.get(variableName);
+
+                    if (!url) {
+                        // Variable not found in our map, skip
+                        continue;
+                    }
+
+                    // Try to extract method from the pattern name or surrounding context
+                    if (pattern.name.includes('axios')) {
+                        // For axios, check the full match for method
+                        const methodMatch = match[0].match(/\.(get|post|put|delete|patch)/i);
+                        if (methodMatch) {
+                            method = methodMatch[1].toUpperCase();
+                        }
+                    } else if (pattern.name.includes('fetch')) {
+                        // For fetch, look for method in surrounding context
+                        const contextStart = Math.max(0, match.index - 100);
+                        const contextEnd = Math.min(code.length, match.index + match[0].length + 100);
+                        const fetchContext = code.substring(contextStart, contextEnd);
+                        const methodMatch = fetchContext.match(/method\s*:\s*['"`]([A-Z]+)['"`]/i);
+                        if (methodMatch) {
+                            method = methodMatch[1].toUpperCase();
+                        }
+                    }
+                } else if (pattern.methodInMatch) {
                     // Method is in capture group 1, URL in group 2 (axios.post, etc.)
                     method = match[1] ? match[1].toUpperCase() : null;
                     url = match[2];
@@ -275,6 +363,7 @@ class EndpointScanner {
                         lineNumber: lineNumber,
                         pattern: pattern.name,
                         context: context.substring(Math.max(0, match.index - contextStart - 50), match.index - contextStart + match[0].length + 50),
+                        variableRef: variableName, // Track if this was resolved from a variable
                         matchedAt: Date.now()
                     });
                 }
@@ -475,7 +564,12 @@ class EndpointScanner {
     }
 }
 
-// Export for use in content script
+// Export for use in content script and page context
 if (typeof window !== 'undefined') {
     window.EndpointScanner = EndpointScanner;
+}
+
+// Also export to global scope for content script
+if (typeof self !== 'undefined') {
+    self.EndpointScanner = EndpointScanner;
 }

@@ -8,6 +8,7 @@
 
     // Global state
     let seenCredentials = new Set();
+    let interceptorInjected = false; // Track if we've already injected the interceptor
 
     // False positive validation for the scanner
     window.isValidSecret = function (match, patternConfig) {
@@ -37,16 +38,18 @@
             if (typeof browser !== 'undefined' && browser.storage) {
                 const result = await browser.storage.local.get(['whitelistedDomains']);
                 whitelistedDomains = result.whitelistedDomains || [];
+                console.log('[FW Content] Whitelist loaded:', whitelistedDomains);
             }
         } catch (error) {
-            debugLog('Could not load whitelist, using empty list');
+            console.log('[FW Content] Could not load whitelist, using empty list:', error);
             whitelistedDomains = [];
         }
     }
 
     // Check if current domain is whitelisted
     function isDomainWhitelisted() {
-        return whitelistedDomains.some(domain => {
+        // Check user whitelist only (no built-in whitelist - root causes fixed)
+        const isWhitelisted = whitelistedDomains.some(domain => {
             if (domain.startsWith('*.')) {
                 const baseDomain = domain.substring(2);
                 return currentDomain === baseDomain || currentDomain.endsWith('.' + baseDomain);
@@ -54,22 +57,42 @@
                 return currentDomain === domain;
             }
         });
+        console.log(`[FW Content] Domain whitelist check for "${currentDomain}": ${isWhitelisted}`);
+        return isWhitelisted;
     }
 
     // --- Network Interceptor Injection ---
     function injectInterceptor() {
-        if (isDomainWhitelisted()) return;
+        console.log('[FW Content] injectInterceptor() called');
+
+        if (isDomainWhitelisted()) {
+            console.log('[FW Content] Skipping interceptor injection - domain is whitelisted');
+            return;
+        }
+
+        // Check if we've already injected in this content script instance
+        if (interceptorInjected) {
+            console.log('[FW Content] Interceptor already injected by this content script - skipping');
+            return;
+        }
 
         try {
+            console.log('[FW Content] Creating interceptor script element...');
             const script = document.createElement('script');
             script.src = (typeof chrome !== 'undefined' ? chrome : browser).runtime.getURL('utils/network-interceptor.js');
             script.onload = function () {
+                console.log('[FW Content] Interceptor script loaded and executed');
                 this.remove();
             };
+            script.onerror = function(e) {
+                console.error('[FW Content] Interceptor script failed to load:', e);
+            };
             (document.head || document.documentElement).appendChild(script);
+            interceptorInjected = true; // Mark as injected
+            console.log('[FW Content] Interceptor script element appended to DOM');
             debugLog('Network interceptor injected');
         } catch (e) {
-            console.error('Failed to inject interceptor:', e);
+            console.error('[FW Content] Failed to inject interceptor:', e);
         }
     }
 
@@ -79,20 +102,34 @@
 
         if (event.data && event.data.type === 'FERRETWATCH_API_CALL') {
             const apiCall = event.data.data;
+            console.log(`[FW Content] API call received from interceptor: ${apiCall.method} ${apiCall.url}`);
+            debugLog(`[Content] API call captured: ${apiCall.method} ${apiCall.url}`);
             // Send to background
             if (typeof chrome !== 'undefined' && chrome.runtime) {
                 chrome.runtime.sendMessage({
                     type: 'API_CALL_CAPTURED',
                     data: apiCall
+                }, response => {
+                    if (chrome.runtime.lastError) {
+                        console.error('[FW Content] Error sending to background:', chrome.runtime.lastError);
+                    } else {
+                        console.log('[FW Content] Message sent to background successfully');
+                    }
                 });
             } else if (typeof browser !== 'undefined' && browser.runtime) {
                 browser.runtime.sendMessage({
                     type: 'API_CALL_CAPTURED',
                     data: apiCall
+                }).then(() => {
+                    console.log('[FW Content] Message sent to background successfully');
+                }).catch(err => {
+                    console.error('[FW Content] Error sending to background:', err);
                 });
             }
         }
     });
+
+    console.log('[FW Content] Message listener registered for window.postMessage');
 
 
     function buildNotificationContent(container, content, risk) {
@@ -627,29 +664,47 @@
         return findings;
     }
 
-    async function initializeScanner() {
+    // Inject interceptor IMMEDIATELY at document_start (before page scripts run)
+    async function injectInterceptorEarly() {
         try {
+            console.log('[FW Content] Early initialization at document_start');
             await loadWhitelist();
-            await loadSettings(); // Load settings into cache
             if (isDomainWhitelisted()) {
-                debugLog('FerretWatch disabled for domain:', currentDomain);
+                console.log('[FW Content] Domain is whitelisted - skipping interceptor injection');
                 return;
             }
 
-            debugLog('FerretWatch Auto-scanning for credentials...');
-
-            // Inject interceptor for v2.0 API Discovery
+            // Inject interceptor before any page scripts can run
             injectInterceptor();
-
-            await runScan();
-
-
+            console.log('[FW Content] Interceptor injected at document_start');
         } catch (error) {
-            console.error('FerretWatch initialization error:', error);
+            console.error('[FW Content] Early injection error:', error);
         }
     }
 
-    // Start scanning when ready
+    async function initializeScanner() {
+        try {
+            console.log('[FW Content] Initializing FerretWatch scanner on domain:', currentDomain);
+            await loadSettings(); // Load settings into cache
+            if (isDomainWhitelisted()) {
+                console.log('[FW Content] FerretWatch disabled for whitelisted domain:', currentDomain);
+                return;
+            }
+
+            console.log('[FW Content] FerretWatch starting scan on:', currentDomain);
+            debugLog('FerretWatch Auto-scanning for credentials...');
+
+            await runScan();
+
+        } catch (error) {
+            console.error('[FW Content] Initialization error:', error);
+        }
+    }
+
+    // IMMEDIATELY inject interceptor (synchronous, at document_start)
+    injectInterceptorEarly();
+
+    // Delay scanning until DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initializeScanner);
     } else {
@@ -890,7 +945,8 @@
             } else if (message.action === 'scanUnusedEndpoints') {
                 (async () => {
                     try {
-                        if (typeof window.EndpointScanner === 'undefined') {
+                        // EndpointScanner is loaded in content script context, not page context
+                        if (typeof EndpointScanner === 'undefined') {
                             sendResponse({
                                 success: false,
                                 error: 'EndpointScanner not loaded'
@@ -898,8 +954,10 @@
                             return;
                         }
 
-                        const scanner = new window.EndpointScanner();
+                        debugLog('[Content] Starting endpoint scan...');
+                        const scanner = new EndpointScanner();
                         const scanResult = await scanner.scanPage();
+                        debugLog(`[Content] Scan complete: ${scanResult.total} endpoints found`);
 
                         sendResponse({
                             success: true,

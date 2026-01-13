@@ -179,7 +179,12 @@ class BackgroundService {
     }
 
     handleApiCall(apiData, tabId) {
-        if (!tabId) return;
+        if (!tabId) {
+            console.warn('[API] No tabId provided for API call:', apiData.url);
+            return;
+        }
+
+        console.log(`[API] Storing endpoint for tab ${tabId}: ${apiData.method} ${apiData.url}`);
 
         const currentEndpoints = this.apiEndpoints.get(tabId) || [];
 
