@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FerretWatch</title>
     <link rel="stylesheet" href="popup.css">
 </head>
+
 <body>
     <div class="container">
         <div class="header">
@@ -13,139 +15,146 @@
             <h1>FerretWatch</h1>
             <span class="tagline">by CyberCyberLabs</span>
         </div>
-        
+
         <div class="content">
-        
-        <div class="controls">
-            <button class="btn btn-primary" id="rescanBtn">
-                <span class="btn-icon">🔄</span>
-                Rescan Page
-            </button>
-            <button class="btn btn-secondary" id="settingsBtn">
-                <span class="btn-icon">⚙️</span>
-                Settings
-            </button>
-        </div>
-        
-        <div class="domain-controls">
-            <div class="domain-info">
-                <strong>Domain:</strong> <span id="currentDomain">loading...</span>
+
+            <div class="controls">
+                <button class="btn btn-primary" id="rescanBtn">
+                    <span class="btn-icon">🔄</span>
+                    Rescan Page
+                </button>
+                <button class="btn btn-accent" id="explorerBtn">
+                    <span class="btn-icon">🚀</span>
+                    API Explorer
+                </button>
+                <button class="btn btn-secondary" id="settingsBtn">
+                    <span class="btn-icon">⚙️</span>
+                    Settings
+                </button>
             </div>
-            <button class="btn btn-small" id="whitelistBtn">Add to Whitelist</button>
-        </div>
-        
-        <!-- Findings Display Section -->
-        <div class="findings-section" id="findingsSection" style="display: none;">
-            <div class="findings-header">
-                <h4>Security Findings</h4>
-                <span class="findings-count" id="findingsCount">0</span>
+
+
+            <div class="domain-controls">
+                <div class="domain-info">
+                    <strong>Domain:</strong> <span id="currentDomain">loading...</span>
+                </div>
+                <button class="btn btn-small" id="whitelistBtn">Add to Whitelist</button>
             </div>
-            <div class="findings-filters" id="findingsFilters" style="display: none;">
-                <button class="filter-btn active" id="filterAll" data-filter="all">All</button>
-                <button class="filter-btn" id="filterBuckets" data-filter="buckets">Buckets</button>
-                <button class="filter-btn" id="filterOther" data-filter="other">Other</button>
-                <button class="filter-btn" id="filterHigh" data-filter="high-risk">High Risk</button>
-            </div>
-            <div class="findings-list" id="findingsList">
-                <!-- Findings will be populated here -->
-            </div>
-        </div>
-    </div>
-    
-    <div class="footer">
-        <div class="footer-actions">
-            <div class="export-dropdown" id="exportDropdown">
-                <button class="btn btn-small" id="exportBtn">📊 Export</button>
-                <div class="dropdown-content" id="exportOptions">
-                    <a href="#" id="exportJSON">JSON Format</a>
-                    <a href="#" id="exportCSV">CSV Format</a>
+
+            <!-- Findings Display Section -->
+            <div class="findings-section" id="findingsSection" style="display: none;">
+                <div class="findings-header">
+                    <h4>Security Findings</h4>
+                    <span class="findings-count" id="findingsCount">0</span>
+                </div>
+                <div class="findings-filters" id="findingsFilters" style="display: none;">
+                    <button class="filter-btn active" id="filterAll" data-filter="all">All</button>
+                    <button class="filter-btn" id="filterBuckets" data-filter="buckets">Buckets</button>
+                    <button class="filter-btn" id="filterOther" data-filter="other">Other</button>
+                    <button class="filter-btn" id="filterHigh" data-filter="high-risk">High Risk</button>
+                </div>
+                <div class="findings-list" id="findingsList">
+                    <!-- Findings will be populated here -->
                 </div>
             </div>
-            <a href="https://cybercyberlabs.com" target="_blank" id="helpBtn">Visit CyberCyberLabs</a>
         </div>
-        <div class="version-info">
-            <span class="version">v2.2.0</span>
-            <div class="company">
-                <img src="../images/browser-extension-logo.svg" alt="Logo" class="footer-logo">
-                <span>CyberCyberLabs</span>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Settings Modal -->
-    <div class="modal-overlay" id="settingsModal" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Scanner Settings</h3>
-                <button class="modal-close" id="closeSettings">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="setting-group">
-                    <h4>Domain Whitelist</h4>
-                    <div class="whitelist-info">
-                        <span>Whitelisted domains: <strong id="whitelistCount">0</strong></span>
-                        <button class="btn btn-small" id="manageWhitelist">Manage Whitelist</button>
+
+        <div class="footer">
+            <div class="footer-actions">
+                <div class="export-dropdown" id="exportDropdown">
+                    <button class="btn btn-small" id="exportBtn">📊 Export</button>
+                    <div class="dropdown-content" id="exportOptions">
+                        <a href="#" id="exportJSON">JSON Format</a>
+                        <a href="#" id="exportCSV">CSV Format</a>
                     </div>
-                    <div id="whitelistView" style="display: none; margin-top: 10px;">
-                        <div id="whitelistList" class="whitelist-list">
-                            <!-- Whitelisted domains will be populated here -->
+                </div>
+                <a href="https://cybercyberlabs.com" target="_blank" id="helpBtn">Visit CyberCyberLabs</a>
+            </div>
+            <div class="version-info">
+                <span class="version">v2.2.0</span>
+                <div class="company">
+                    <img src="../images/browser-extension-logo.svg" alt="Logo" class="footer-logo">
+                    <span>CyberCyberLabs</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div class="modal-overlay" id="settingsModal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Scanner Settings</h3>
+                    <button class="modal-close" id="closeSettings">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="setting-group">
+                        <h4>Domain Whitelist</h4>
+                        <div class="whitelist-info">
+                            <span>Whitelisted domains: <strong id="whitelistCount">0</strong></span>
+                            <button class="btn btn-small" id="manageWhitelist">Manage Whitelist</button>
+                        </div>
+                        <div id="whitelistView" style="display: none; margin-top: 10px;">
+                            <div id="whitelistList" class="whitelist-list">
+                                <!-- Whitelisted domains will be populated here -->
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="setting-group">
-                    <h4>Debug Mode</h4>
-                    <div class="setting-item">
-                        <label class="setting-label">
-                            <input type="checkbox" id="debugModeToggle" class="setting-checkbox">
-                            <span class="setting-text">Enable detailed console output</span>
-                        </label>
-                        <p class="setting-description">
-                            Shows detailed scan results, low-risk findings, and technical information in the browser console.
+                    <div class="setting-group">
+                        <h4>Debug Mode</h4>
+                        <div class="setting-item">
+                            <label class="setting-label">
+                                <input type="checkbox" id="debugModeToggle" class="setting-checkbox">
+                                <span class="setting-text">Enable detailed console output</span>
+                            </label>
+                            <p class="setting-description">
+                                Shows detailed scan results, low-risk findings, and technical information in the browser
+                                console.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="setting-group">
+                        <h4>Export Options</h4>
+                        <p style="color: #666; margin: 10px 0; font-size: 14px;">
+                            Export files will contain unmasked credential values for analysis purposes.
+                            Handle exported files securely and delete after use.
                         </p>
                     </div>
                 </div>
-                <div class="setting-group">
-                    <h4>Export Options</h4>
-                    <p style="color: #666; margin: 10px 0; font-size: 14px;">
-                        Export files will contain unmasked credential values for analysis purposes. 
-                        Handle exported files securely and delete after use.
-                    </p>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" id="saveSettings">Close Settings</button>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-primary" id="saveSettings">Close Settings</button>
             </div>
         </div>
-    </div>
-    
-    <!-- Custom Confirmation Modal -->
-    <div class="modal-overlay" id="confirmModal" style="display: none;">
-        <div class="modal-content confirm-modal">
-            <div class="modal-header">
-                <h3>Whitelist Domain</h3>
-            </div>
-            <div class="modal-body">
-                <p id="confirmMessage">Disable scanner for this domain?</p>
-                <div class="confirm-options">
-                    <button class="btn btn-primary" id="confirmDomainOnly">
-                        <span class="btn-icon">🌐</span>
-                        <span>This Domain Only</span>
-                    </button>
-                    <button class="btn btn-secondary" id="confirmIncludeSubdomains">
-                        <span class="btn-icon">🔗</span>
-                        <span>Include All Subdomains</span>
-                    </button>
+
+        <!-- Custom Confirmation Modal -->
+        <div class="modal-overlay" id="confirmModal" style="display: none;">
+            <div class="modal-content confirm-modal">
+                <div class="modal-header">
+                    <h3>Whitelist Domain</h3>
                 </div>
-                <div class="confirm-info">
-                    <small>Manage whitelisted domains in Settings</small>
+                <div class="modal-body">
+                    <p id="confirmMessage">Disable scanner for this domain?</p>
+                    <div class="confirm-options">
+                        <button class="btn btn-primary" id="confirmDomainOnly">
+                            <span class="btn-icon">🌐</span>
+                            <span>This Domain Only</span>
+                        </button>
+                        <button class="btn btn-secondary" id="confirmIncludeSubdomains">
+                            <span class="btn-icon">🔗</span>
+                            <span>Include All Subdomains</span>
+                        </button>
+                    </div>
+                    <div class="confirm-info">
+                        <small>Manage whitelisted domains in Settings</small>
+                    </div>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-cancel" id="confirmCancel">Cancel</button>
+                <div class="modal-footer">
+                    <button class="btn btn-cancel" id="confirmCancel">Cancel</button>
+                </div>
             </div>
         </div>
-    </div>
-    
-    <script src="popup.js"></script>
+
+        <script src="popup.js"></script>
 </body>
+
 </html>

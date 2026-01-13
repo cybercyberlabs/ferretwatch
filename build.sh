@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-VERSION="2.2.0"
+VERSION="2.3.0"
 BUILD_DIR="builds"
 DIST_DIR="$(pwd)/dist"
 
@@ -80,12 +80,19 @@ copy_browser_files() {
     print_info "📋 Copying files to $target_dir..."
     
     # Create target directory structure
-    mkdir -p "$target_dir"/{config,popup,utils,icons,docs}
-    
+    mkdir -p "$target_dir"/{config,popup,utils,content,icons,docs}
+
     # Copy main files
     minify_js "background.js" "$target_dir/background.js"
-    minify_js "content.js" "$target_dir/content.js"
-    
+
+    # Copy modular content scripts
+    print_info "📋 Copying modular content scripts..."
+    for content_file in content/*.js; do
+        if [[ -f "$content_file" ]]; then
+            minify_js "$content_file" "$target_dir/$content_file"
+        fi
+    done
+
     # Copy directories
     cp -r config/* "$target_dir/config/" 2>/dev/null || true
     cp -r popup/* "$target_dir/popup/" 2>/dev/null || true
@@ -127,8 +134,10 @@ create_chrome_manifest() {
             .action = .browser_action |
             del(.browser_action) |
             .host_permissions = .permissions |
-            .permissions = ["storage", "activeTab"]' \
+            .permissions = ["storage", "activeTab", "scripting"] |
+            .web_accessible_resources = [{"resources": .web_accessible_resources, "matches": ["<all_urls>"]}]' \
             manifest.json > "$target_dir/manifest.json"
+
     else
         # Fallback: use manifest-v3.json if available
         if [[ -f "manifest-v3.json" ]]; then

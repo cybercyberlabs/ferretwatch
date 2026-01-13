@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "FerretWatch",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Advanced credential and secret scanner for web pages",
   "icons": {
     "16": "icons/icon-16.png",
@@ -13,8 +13,16 @@
   "permissions": [
     "<all_urls>",
     "storage",
-    "activeTab"
+    "storage",
+    "activeTab",
+    "webRequest",
+    "webRequestBlocking"
   ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
   "browser_action": {
     "default_title": "FerretWatch",
     "default_popup": "popup/popup.html",
@@ -39,10 +47,22 @@
         "utils/bucket-tester.js",
         "utils/settings.js",
         "utils/scanner.js",
-        "content.js"
+        "utils/endpoint-scanner.js",
+        "content/constants.js",
+        "content/utils.js",
+        "content/whitelist-checker.js",
+        "content/interceptor-manager.js",
+        "content/message-handler.js",
+        "content/notification-ui.js",
+        "content/scanner-manager.js",
+        "content/index.js"
       ],
-      "run_at": "document_end"
+      "run_at": "document_start"
     }
+  ],
+  "web_accessible_resources": [
+    "utils/network-interceptor.js",
+    "utils/main-world-proxy.js"
   ],
   "browser_specific_settings": {
     "gecko": {

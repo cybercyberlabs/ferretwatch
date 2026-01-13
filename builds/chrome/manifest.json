@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FerretWatch",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Advanced credential and secret scanner for web pages",
   "icons": {
     "16": "icons/icon-16.png",
@@ -12,8 +12,12 @@
   },
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "scripting"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": [
@@ -27,11 +31,35 @@
         "utils/bucket-tester.js",
         "utils/settings.js",
         "utils/scanner.js",
-        "content.js"
+        "utils/endpoint-scanner.js",
+        "content/constants.js",
+        "content/utils.js",
+        "content/whitelist-checker.js",
+        "content/interceptor-manager.js",
+        "content/message-handler.js",
+        "content/notification-ui.js",
+        "content/scanner-manager.js",
+        "content/index.js"
       ],
-      "run_at": "document_end"
+      "run_at": "document_start"
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "utils/network-interceptor.js",
+        "utils/main-world-proxy.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "{e4c98b0d-5c2f-4cb9-87c1-4d89b79efb68}"
+    }
+  },
   "action": {
     "default_title": "FerretWatch",
     "default_popup": "popup/popup.html",
@@ -44,6 +72,11 @@
     }
   },
   "host_permissions": [
-    "<all_urls>"
+    "<all_urls>",
+    "storage",
+    "storage",
+    "activeTab",
+    "webRequest",
+    "webRequestBlocking"
   ]
 }
