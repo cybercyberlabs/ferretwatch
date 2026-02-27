@@ -682,7 +682,8 @@ class BackgroundService {
                         data: this.settings
                     });
                 } catch (error) {
-                    // Tab might not have content script, ignore
+                    // Tab might not have content script loaded yet - this is expected
+                    console.debug(`Could not notify tab ${tab.id} of settings update:`, error.message);
                 }
             }
         } catch (error) {
@@ -825,7 +826,8 @@ class BackgroundService {
                     timestamp: Date.now()
                 });
             } catch (error) {
-                // Tab might be closed, skip
+                // Tab might be closed or inaccessible - skip it
+                console.debug(`Could not get findings from tab ${tabId}:`, error.message);
             }
         }
 

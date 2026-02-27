@@ -172,20 +172,28 @@ class Assert {
     }
 
     static throws(fn, message = '') {
+        let didThrow = false;
         try {
             fn();
-            throw new Error(`${message}\n  Expected function to throw, but it didn't`);
         } catch (error) {
-            // Expected to throw
+            // Expected to throw - this is the success case
+            didThrow = true;
+        }
+        if (!didThrow) {
+            throw new Error(`${message}\n  Expected function to throw, but it didn't`);
         }
     }
 
     static async throwsAsync(fn, message = '') {
+        let didThrow = false;
         try {
             await fn();
-            throw new Error(`${message}\n  Expected async function to throw, but it didn't`);
         } catch (error) {
-            // Expected to throw
+            // Expected to throw - this is the success case
+            didThrow = true;
+        }
+        if (!didThrow) {
+            throw new Error(`${message}\n  Expected async function to throw, but it didn't`);
         }
     }
 
@@ -228,11 +236,15 @@ class Assert {
     }
 
     static async rejects(promise, message = '') {
+        let didReject = false;
         try {
             await promise;
-            throw new Error(`${message}\n  Expected promise to reject, but it resolved`);
         } catch (error) {
-            // Expected to reject
+            // Expected to reject - this is the success case
+            didReject = true;
+        }
+        if (!didReject) {
+            throw new Error(`${message}\n  Expected promise to reject, but it resolved`);
         }
     }
 }

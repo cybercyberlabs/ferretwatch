@@ -14,7 +14,9 @@ let cachedDebugMode = false;
             cachedDebugMode = result.debugMode || false;
         }
     } catch (e) {
-        // Ignore errors during initialization
+        // Storage API not available during initialization - use default value
+        console.debug('Could not load debugMode from storage:', e.message);
+        cachedDebugMode = false;
     }
 })();
 

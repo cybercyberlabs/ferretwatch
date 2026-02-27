@@ -207,7 +207,8 @@ class BrowserCompat {
                 };
             }
         } catch (e) {
-            // chrome.action not available, will use browserAction fallback
+            // chrome.action API not available (Manifest V2) - will use browserAction fallback
+            console.debug('chrome.action API not available, using browserAction fallback');
         }
 
         if (typeof chrome !== 'undefined' && chrome.browserAction && typeof chrome.browserAction.setBadgeText === 'function') {

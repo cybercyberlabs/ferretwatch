@@ -39,7 +39,8 @@ class BucketPerformanceTests {
                 this.testFramework = new TestFramework();
             }
         } catch (e) {
-            // Ignore test framework initialization errors
+            // Test framework not available - tests will run without framework
+            console.debug('Test framework not available:', e.message);
         }
         
         this.performanceResults = [];
