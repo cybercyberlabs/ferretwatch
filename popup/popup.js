@@ -164,53 +164,31 @@ async function handleRescan() {
         // Try to communicate with content script
         try {
             const response = await browser.tabs.sendMessage(currentTab.id, {
-                action: 'rescan'
+                type: 'RESCAN',
+                action: 'RESCAN'
             });
 
             console.log('📨 Rescan response:', response);
-
-            if (response && response.success) {
-                const count = response.findings ? response.findings.length : 0;
-                updateStatus('active', count > 0 ?
-                    `Found ${count} credential${count === 1 ? '' : 's'}` :
-                    'No credentials found');
-                console.log(`✅ Rescan complete: ${count} findings`);
-
-                // Update findings display
-                if (response.findings) {
-                    displayFindings(response.findings);
-                }
-            } else {
-                updateStatus('warning', 'Rescan completed - check console');
-                console.log('⚠️ Rescan completed with no clear response');
+            const state = response && response.state;
+            const findings = response && Array.isArray(response.findings) ? response.findings : [];
+            if (state === 'unavailable' || state === 'failed') {
+                updateStatus('error', state === 'failed' ? 'Scan failed' : 'Scan unavailable on this page');
+            } else if (state === 'pending') {
+                updateStatus('active', 'Scan still running');
+            } else if (state === 'skipped') {
+                updateStatus('warning', 'Scanning skipped for this site');
+            } else if (state === 'truncated') {
+                updateStatus('warning', `Scan truncated, ${findings.length} credential(s) shown`);
+                displayFindings(findings);
+            } else if (state === 'success' || response) {
+                updateStatus('active', findings.length > 0
+                    ? `Found ${findings.length} credential${findings.length === 1 ? '' : 's'}`
+                    : 'No credentials found');
+                displayFindings(findings);
             }
         } catch (msgError) {
-            console.log('📡 Direct messaging failed, trying script injection...');
-
-            // Fallback: inject scan script directly
-            const results = await browser.tabs.executeScript(currentTab.id, {
-                code: `
-                    (function() {
-                        console.log('🔍 Manual rescan via popup');
-                        if (typeof scanForCredentials === 'function') {
-                            return scanForCredentials();
-                        }
-                        return [];
-                    })();
-                `
-            });
-
-            if (results && results[0]) {
-                const findings = results[0];
-                const count = Array.isArray(findings) ? findings.length : 0;
-                updateStatus('active', count > 0 ?
-                    `Found ${count} credential${count === 1 ? '' : 's'}` :
-                    'No credentials found');
-                console.log(`✅ Script injection scan complete: ${count} findings`);
-            } else {
-                updateStatus('warning', 'Rescan completed - check console');
-                console.log('⚠️ Script injection completed');
-            }
+            updateStatus('error', 'Scan unavailable on this page');
+            console.log('Content script unavailable:', msgError.message);
         }
 
     } catch (error) {
@@ -309,6 +287,26 @@ async function saveSettingsData() {
     hideSettings();
 }
 
+async function readWhitelist() {
+    const storage = await browser.storage.local.get(['settings', 'whitelistedDomains']);
+    const fromSettings = storage.settings && storage.settings.whitelistedDomains;
+    if (Array.isArray(fromSettings)) {
+        return fromSettings.slice();
+    }
+    return Array.isArray(storage.whitelistedDomains) ? storage.whitelistedDomains.slice() : [];
+}
+
+async function writeWhitelist(whitelistedDomains) {
+    const storage = await browser.storage.local.get(['settings']);
+    const settings = { ...(storage.settings || {}), whitelistedDomains };
+    await browser.storage.local.set({ settings, whitelistedDomains });
+    const tabs = await browser.tabs.query({});
+    await Promise.all(tabs.map((tab) => browser.tabs.sendMessage(tab.id, {
+        type: 'SETTINGS_UPDATED',
+        data: settings
+    }).catch(() => {})));
+}
+
 async function handleWhitelist() {
     console.log('📝 Handling whitelist...');
 
@@ -321,9 +319,7 @@ async function handleWhitelist() {
         const url = new URL(currentTab.url);
         const domain = url.hostname;
 
-        // Get current whitelist
-        const storage = await browser.storage.local.get(['whitelistedDomains']);
-        let whitelistedDomains = storage.whitelistedDomains || [];
+        let whitelistedDomains = await readWhitelist();
 
         // Check if already whitelisted
         const isWhitelisted = whitelistedDomains.some(d => {
@@ -346,7 +342,7 @@ async function handleWhitelist() {
 
             if (domainToRemove) {
                 whitelistedDomains = whitelistedDomains.filter(d => d !== domainToRemove);
-                await browser.storage.local.set({ whitelistedDomains });
+                await writeWhitelist(whitelistedDomains);
                 console.log('✅ Removed from whitelist:', domainToRemove);
                 alert(`✅ Scanner enabled for ${domain}\n\nPage will reload.`);
                 browser.tabs.reload(currentTab.id);
@@ -355,7 +351,7 @@ async function handleWhitelist() {
             // Add to whitelist (simple version - just exact domain)
             if (!whitelistedDomains.includes(domain)) {
                 whitelistedDomains.push(domain);
-                await browser.storage.local.set({ whitelistedDomains });
+                await writeWhitelist(whitelistedDomains);
                 console.log('✅ Added to whitelist:', domain);
                 alert(`🔕 Scanner disabled for ${domain}\n\nPage will reload.`);
                 browser.tabs.reload(currentTab.id);
@@ -401,21 +397,23 @@ async function exportData(format) {
         // Method 1: Try to get via message
         try {
             console.log('📤 Trying method 1: message to content script');
-            const response = await browser.tabs.sendMessage(currentTab.id, {
-                action: 'getCurrentFindings'
+            const response = await browser.runtime.sendMessage({
+                type: 'EXPORT_FINDINGS',
+                tabId: currentTab.id
             });
-            if (response && response.success && Array.isArray(response.findings) && response.findings.length > 0) {
-                findings = response.findings;
+            if (response && Array.isArray(response.exportFindings)) {
+                findings = response.exportFindings;
                 console.log('✅ Method 1 success: Got', findings.length, 'findings');
             } else {
                 console.log('⚠️ Method 1: No findings or invalid response');
             }
         } catch (error) {
-            console.log('❌ Method 1 failed:', error.message);
+            updateStatus('error', 'Export unavailable on this page');
+            console.log('Export failed:', error.message);
+            return;
         }
 
-        // Method 2: Try via script injection if method 1 failed
-        if (findings.length === 0) {
+        if (false && findings.length === 0) {
             try {
                 console.log('📤 Trying method 2: script injection');
                 const results = await browser.tabs.executeScript(currentTab.id, {
@@ -511,13 +509,17 @@ async function exportData(format) {
             domain: url.hostname,
             url: currentTab.url,
             title: currentTab.title,
-            scannerVersion: '2.2.0',
+            scannerVersion: '2.3.5',
             findings: findings.map(f => ({
+                id: f.id || '',
                 type: f.type || 'Unknown',
                 risk: f.riskLevel || f.risk || 'unknown',
                 value: f.value || 'Unknown',
                 context: f.context || '',
                 position: f.position || 0,
+                sourceKind: f.sourceKind || '',
+                sourceUrl: f.sourceUrl || '',
+                dismissed: !!f.dismissed,
                 timestamp: f.timestamp || new Date().toISOString()
             })),
             summary: {
@@ -651,8 +653,7 @@ async function displayWhitelistItems() {
     }
 
     try {
-        const storage = await browser.storage.local.get(['whitelistedDomains']);
-        const whitelistedDomains = storage.whitelistedDomains || [];
+        const whitelistedDomains = await readWhitelist();
 
         if (whitelistedDomains.length === 0) {
             whitelistList.innerHTML = '<p style="color: #666; font-style: italic; margin: 10px 0;">No domains whitelisted</p>';
@@ -688,16 +689,14 @@ async function removeDomainFromWhitelist(domain) {
     console.log('🗑️ Removing domain from whitelist:', domain);
 
     try {
-        const storage = await browser.storage.local.get(['whitelistedDomains']);
-        let whitelistedDomains = storage.whitelistedDomains || [];
+        let whitelistedDomains = await readWhitelist();
 
         // Remove the domain
         const originalLength = whitelistedDomains.length;
         whitelistedDomains = whitelistedDomains.filter(d => d !== domain);
 
         if (whitelistedDomains.length < originalLength) {
-            // Save the updated list
-            await browser.storage.local.set({ whitelistedDomains });
+            await writeWhitelist(whitelistedDomains);
 
             // Refresh the display
             displayWhitelistItems();
@@ -822,10 +821,11 @@ async function dismissBucketFinding(bucketUrl) {
         }
 
         // Send message to content script to dismiss the finding
-        const response = await browser.tabs.sendMessage(currentTab.id, {
-            action: 'dismissFinding',
-            value: bucketUrl,
-            category: 'cloudStorage'
+        const response = await browser.runtime.sendMessage({
+            type: 'DISMISS_FINDING',
+            tabId: currentTab.id,
+            id: bucketUrl,
+            value: bucketUrl
         });
 
         if (response && response.success) {
@@ -900,8 +900,7 @@ async function updateWhitelistStatus() {
         const domain = url.hostname;
 
         // Check whitelist
-        const storage = await browser.storage.local.get(['whitelistedDomains']);
-        const whitelistedDomains = storage.whitelistedDomains || [];
+        const whitelistedDomains = await readWhitelist();
 
         const isWhitelisted = whitelistedDomains.some(d => {
             if (d.startsWith('*.')) {
@@ -933,8 +932,7 @@ async function updateWhitelistStatus() {
 
 async function updateWhitelistInfo() {
     try {
-        const storage = await browser.storage.local.get(['whitelistedDomains']);
-        const whitelistedDomains = storage.whitelistedDomains || [];
+        const whitelistedDomains = await readWhitelist();
         document.getElementById('whitelistCount').textContent = whitelistedDomains.length;
     } catch (error) {
         console.error('❌ Error loading whitelist info:', error);
@@ -962,19 +960,37 @@ async function loadCurrentFindings() {
 
     try {
         // Try to get findings from content script
-        const response = await browser.tabs.sendMessage(currentTab.id, {
-            action: 'getCurrentFindings'
+        const response = await browser.runtime.sendMessage({
+            type: 'GET_FINDINGS',
+            tabId: currentTab.id
         });
 
-        if (response && response.success && Array.isArray(response.findings)) {
-            console.log(`✅ Loaded ${response.findings.length} findings`);
-            displayFindings(response.findings);
-        } else {
-            console.log('⚠️ No findings available or invalid response');
+        const state = response && response.state;
+        const findings = response && Array.isArray(response.findings) ? response.findings : [];
+        if (state === 'unavailable') {
+            updateStatus('error', 'Scan unavailable on this page');
             displayFindings([]);
+        } else if (state === 'pending') {
+            updateStatus('active', 'Scan still running');
+            displayFindings(findings);
+        } else if (state === 'failed') {
+            updateStatus('error', 'Scan failed');
+            displayFindings(findings);
+        } else if (state === 'skipped') {
+            updateStatus('warning', 'Scanning skipped for this site');
+            displayFindings([]);
+        } else if (state === 'truncated') {
+            updateStatus('warning', `Scan truncated, ${findings.length} shown`);
+            displayFindings(findings);
+        } else {
+            updateStatus('active', findings.length > 0
+                ? `Found ${findings.length} credential${findings.length === 1 ? '' : 's'}`
+                : 'No credentials found');
+            displayFindings(findings);
         }
     } catch (error) {
-        console.log('❌ Failed to load findings:', error.message);
+        console.log('Failed to load findings:', error.message);
+        updateStatus('error', 'Scan unavailable on this page');
         displayFindings([]);
     }
 }

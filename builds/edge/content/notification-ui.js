@@ -1,1 +1,360 @@
-!function(){"use strict";let e=!1;const t=window.FerretWatchUtils||{},n=t.getRiskColor||function(e){return"#ff9800"},o=t.getDarkerRiskColor||function(e){return"#f57c00"},i=t.getBucketProviderIcon||function(){return"☁️"};function s(e,t,o){const s=document.createElement("div");if(s.style.cssText="text-align: center; font-weight: bold; margin-bottom: 12px; font-size: 15px; color: white;",s.textContent=`${t.emoji} ${t.title}`,e.appendChild(s),t.findings&&t.findings.length>0&&t.findings.forEach((t=>{const o=document.createElement("div");o.style.cssText="margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; border-left: 3px solid "+n(t.riskLevel||"medium")+";";const s=document.createElement("div");s.style.cssText="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;";const r=document.createElement("div");if(r.style.cssText="display: flex; align-items: center; gap: 6px;",t.bucketInfo&&t.bucketInfo.provider){const e=document.createElement("span");e.style.cssText="font-size: 14px;",e.textContent=i(t.bucketInfo.provider),r.appendChild(e)}const c=document.createElement("span");c.style.cssText="font-weight: bold; font-size: 13px;",c.textContent=t.type,r.appendChild(c),s.appendChild(r);const d=document.createElement("span");d.style.cssText=`background: ${n(t.riskLevel||"medium")}; color: white; padding: 2px 6px; border-radius: 12px; font-size: 10px; font-weight: bold;`,d.textContent=(t.riskLevel||"unknown").toUpperCase(),s.appendChild(d),o.appendChild(s);const a=document.createElement("div");a.style.cssText="font-family: monospace; font-size: 12px; color: rgba(255,255,255,0.9); display: flex; justify-content: space-between; align-items: center;";const l=document.createElement("span");if(l.textContent=t.value,a.appendChild(l),t.bucketInfo){const e=document.createElement("button");e.style.cssText="background: rgba(255,255,255,0.2); border: none; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; cursor: pointer; margin-left: 8px;",e.textContent="📋 Copy",e.onclick=n=>{n.stopPropagation(),navigator.clipboard.writeText(t.value).then((()=>{e.textContent="✓ Copied",setTimeout((()=>e.textContent="📋 Copy"),2e3)})).catch((()=>{e.textContent="❌ Failed",setTimeout((()=>e.textContent="📋 Copy"),2e3)}))},a.appendChild(e)}if(o.appendChild(a),t.bucketInfo){const e=document.createElement("div");e.style.cssText="font-size: 11px; color: rgba(255,255,255,0.8); margin-top: 4px; padding: 4px; background: rgba(0,0,0,0.2); border-radius: 3px;";const n=`Provider: ${t.bucketInfo.provider.toUpperCase()}`,i=t.bucketInfo.accessible?"🔓 Public Access":"🔒 Access Denied",s=t.bucketInfo.region?` | Region: ${t.bucketInfo.region}`:"";e.textContent=`${n} | ${i}${s}`,o.appendChild(e)}else if(t.context&&""!==t.context.trim()&&"N/A"!==t.context){const e=document.createElement("div");e.style.cssText="font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 4px; font-style: italic;",e.textContent=`"${t.context.substring(0,50)}${t.context.length>50?"...":""}"`,o.appendChild(e)}e.appendChild(o)})),t.moreCount>0){const n=document.createElement("div");n.style.cssText="margin: 8px 0; padding: 6px; text-align: center; font-style: italic; color: rgba(255,255,255,0.8); border-top: 1px solid rgba(255,255,255,0.2);",n.textContent=`📊 +${t.moreCount} more credential${t.moreCount>1?"s":""} found`,e.appendChild(n)}const r=document.createElement("div");r.style.cssText="margin-top: 12px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.3); font-size: 11px; color: rgba(255,255,255,0.8); text-align: center;",r.textContent="💡 Click to dismiss • Check browser console for full details",e.appendChild(r)}function r(t,i="medium"){const r=undefined;document.querySelectorAll(".cyber-labs-credential-notification").forEach((e=>e.remove()));const c=document.createElement("div");if(c.className="cyber-labs-credential-notification","string"==typeof t?c.textContent=t:t&&"object"==typeof t&&s(c,t,i),Object.assign(c.style,{position:"fixed",top:"20px",right:"20px",background:`linear-gradient(135deg, ${n(i)}, ${o(i)})`,color:"#fff",padding:"16px 20px",borderRadius:"12px",zIndex:"10000",boxShadow:"0 8px 32px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2)",maxWidth:"420px",minWidth:"320px",fontSize:"13px",lineHeight:"1.5",cursor:"pointer",fontFamily:"system-ui, -apple-system, sans-serif",border:"1px solid rgba(255,255,255,0.2)",backdropFilter:"blur(10px)",transition:"all 0.3s ease",animation:"slideInRight 0.3s ease-out"}),!document.getElementById("ferretwatch-animations")){const e=document.createElement("style");e.id="ferretwatch-animations",e.textContent="\n                @keyframes slideInRight {\n                    from {\n                        transform: translateX(100%);\n                        opacity: 0;\n                    }\n                    to {\n                        transform: translateX(0);\n                        opacity: 1;\n                    }\n                }\n\n                @keyframes slideOutRight {\n                    from {\n                        transform: translateX(0);\n                        opacity: 1;\n                    }\n                    to {\n                        transform: translateX(100%);\n                        opacity: 0;\n                    }\n                }\n\n                .cyber-labs-credential-notification:hover {\n                    transform: translateY(-2px) !important;\n                    box-shadow: 0 12px 40px rgba(0,0,0,0.4), 0 6px 20px rgba(0,0,0,0.3) !important;\n                }\n            ",document.head.appendChild(e)}c.addEventListener("click",(()=>{c.style.animation="slideOutRight 0.3s ease-in forwards",setTimeout((()=>{c.parentNode&&c.remove()}),300),e=!0})),setTimeout((()=>{c.parentNode&&(c.style.animation="slideOutRight 0.3s ease-in forwards",setTimeout((()=>{c.parentNode&&c.remove()}),300))}),12e3),document.body.appendChild(c)}function c(e,t){const n=e.filter((e=>!0===e.bucketInfo?.accessible)),o=e.filter((e=>!1===e.bucketInfo?.accessible)),i=e.reduce(((e,t)=>{const n=["low","medium","high","critical"],o=t.riskLevel||"unknown",i=undefined,s=undefined;return n.indexOf(o)>n.indexOf(e)?o:e}),"low");let s,c="☁️";n.length>0?(c="🚨",s=t.some((e=>!0===e.bucketInfo?.accessible))?`🆕 ${n.length} Public Cloud Bucket${n.length>1?"s":""} Found`:`🚨 ${n.length} Public Cloud Bucket${n.length>1?"s":""} Detected`):s=t.length>0?`🆕 ${e.length} Cloud Bucket${e.length>1?"s":""} Found`:`☁️ ${e.length} Cloud Bucket${e.length>1?"s":""} Detected`;const d=undefined,a=undefined;r({emoji:c,title:s,findings:[...n,...o].slice(0,3),moreCount:e.length>3?e.length-3:0},i)}function d(e,t){const n=e.reduce(((e,t)=>{const n=["low","medium","high","critical"],o=t.riskLevel||"unknown",i=undefined,s=undefined;return n.indexOf(o)>n.indexOf(e)?o:e}),"low"),o=undefined,i=undefined,s=undefined,c=undefined;r({emoji:{critical:"🔥",high:"⚠️",medium:"📋",low:"📝",unknown:"❓"}[n]||"📋",title:t.length>0?`🆕 ${t.length} New Credential${t.length>1?"s":""} Found`:`🚨 ${e.length} Credential${e.length>1?"s":""} Detected`,findings:(t.length>0?t:e).slice(0,3),moreCount:e.length>3?e.length-3:0},n)}function a(){e=!1}function l(){return e}window.FerretWatchNotifications={showNotification:r,showBucketNotification:c,showRegularNotification:d,buildNotificationContent:s,resetNotificationDismissed:a,isNotificationDismissed:l}}();
+/**
+ * FerretWatch - Notification UI Module
+ *
+ * Handles all notification display and building logic
+ * Exposes: window.FerretWatchNotifications
+ */
+
+(function() {
+    'use strict';
+
+    // Track notification state
+    let notificationDismissed = false;
+
+    // Get utilities
+    const utils = window.FerretWatchUtils || {};
+    const getRiskColor = utils.getRiskColor || function(risk) { return '#ff9800'; };
+    const getDarkerRiskColor = utils.getDarkerRiskColor || function(risk) { return '#f57c00'; };
+    const getBucketProviderIcon = utils.getBucketProviderIcon || function() { return '☁️'; };
+
+    /**
+     * Builds the notification DOM structure
+     * @param {HTMLElement} container - The notification container element
+     * @param {Object} content - Notification content object
+     * @param {string} content.emoji - Emoji for the notification
+     * @param {string} content.title - Notification title
+     * @param {Array} content.findings - Array of findings to display
+     * @param {number} content.moreCount - Count of additional findings not shown
+     * @param {string} risk - Risk level (critical, high, medium, low)
+     */
+    function buildNotificationContent(container, content, risk) {
+        // Create title
+        const title = document.createElement('div');
+        title.style.cssText = 'text-align: center; font-weight: bold; margin-bottom: 12px; font-size: 15px; color: white;';
+        title.textContent = `${content.emoji} ${content.title}`;
+        container.appendChild(title);
+
+        // Create findings
+        if (content.findings && content.findings.length > 0) {
+            content.findings.forEach(finding => {
+                const findingDiv = document.createElement('div');
+                findingDiv.style.cssText = 'margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; border-left: 3px solid ' + getRiskColor(finding.riskLevel || 'medium') + ';';
+
+                // Finding header with provider icon for bucket findings
+                const header = document.createElement('div');
+                header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;';
+
+                const typeContainer = document.createElement('div');
+                typeContainer.style.cssText = 'display: flex; align-items: center; gap: 6px;';
+
+                // Add provider icon for bucket findings
+                if (finding.bucketInfo && finding.bucketInfo.provider) {
+                    const providerIcon = document.createElement('span');
+                    providerIcon.style.cssText = 'font-size: 14px;';
+                    providerIcon.textContent = getBucketProviderIcon(finding.bucketInfo.provider);
+                    typeContainer.appendChild(providerIcon);
+                }
+
+                const typeSpan = document.createElement('span');
+                typeSpan.style.cssText = 'font-weight: bold; font-size: 13px;';
+                typeSpan.textContent = finding.type;
+                typeContainer.appendChild(typeSpan);
+
+                header.appendChild(typeContainer);
+
+                const badgeSpan = document.createElement('span');
+                badgeSpan.style.cssText = `background: ${getRiskColor(finding.riskLevel || 'medium')}; color: white; padding: 2px 6px; border-radius: 12px; font-size: 10px; font-weight: bold;`;
+                badgeSpan.textContent = (finding.riskLevel || 'unknown').toUpperCase();
+                header.appendChild(badgeSpan);
+
+                findingDiv.appendChild(header);
+
+                // Finding value with copy functionality for bucket URLs
+                const valueDiv = document.createElement('div');
+                valueDiv.style.cssText = 'font-family: monospace; font-size: 12px; color: rgba(255,255,255,0.9); display: flex; justify-content: space-between; align-items: center;';
+
+                const valueText = document.createElement('span');
+                const mask = window.FerretWatchContracts ? window.FerretWatchContracts.maskSecret : function(v) { return '••••'; };
+                const maskContext = window.FerretWatchContracts ? window.FerretWatchContracts.maskContext : function(c) { return c; };
+                valueText.textContent = mask(finding.value);
+                valueDiv.appendChild(valueText);
+
+                // Add copy button for bucket URLs
+                if (finding.bucketInfo) {
+                    const copyBtn = document.createElement('button');
+                    copyBtn.style.cssText = 'background: rgba(255,255,255,0.2); border: none; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; cursor: pointer; margin-left: 8px;';
+                    copyBtn.textContent = '📋 Copy';
+                    copyBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(finding.value).then(() => {
+                            copyBtn.textContent = '✓ Copied';
+                            setTimeout(() => copyBtn.textContent = '📋 Copy', 2000);
+                        }).catch(() => {
+                            copyBtn.textContent = '❌ Failed';
+                            setTimeout(() => copyBtn.textContent = '📋 Copy', 2000);
+                        });
+                    };
+                    valueDiv.appendChild(copyBtn);
+                }
+
+                findingDiv.appendChild(valueDiv);
+
+                // Bucket-specific information
+                if (finding.bucketInfo) {
+                    const bucketInfoDiv = document.createElement('div');
+                    bucketInfoDiv.style.cssText = 'font-size: 11px; color: rgba(255,255,255,0.8); margin-top: 4px; padding: 4px; background: rgba(0,0,0,0.2); border-radius: 3px;';
+
+                    const providerText = `Provider: ${finding.bucketInfo.provider.toUpperCase()}`;
+                    const accessText = finding.bucketInfo.accessible ? '🔓 Public Access' : '🔒 Access Denied';
+                    const regionText = finding.bucketInfo.region ? ` | Region: ${finding.bucketInfo.region}` : '';
+
+                    bucketInfoDiv.textContent = `${providerText} | ${accessText}${regionText}`;
+                    findingDiv.appendChild(bucketInfoDiv);
+                }
+
+                // Finding context (for non-bucket findings)
+                else if (finding.context && finding.context.trim() !== '' && finding.context !== 'N/A') {
+                    const contextDiv = document.createElement('div');
+                    contextDiv.style.cssText = 'font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 4px; font-style: italic;';
+                    const shown = maskContext(finding.context, finding.value);
+                    contextDiv.textContent = `"${shown.substring(0, 50)}${shown.length > 50 ? '...' : ''}"`;
+                    findingDiv.appendChild(contextDiv);
+                }
+
+                container.appendChild(findingDiv);
+            });
+        }
+
+        // More findings indicator
+        if (content.moreCount > 0) {
+            const moreDiv = document.createElement('div');
+            moreDiv.style.cssText = 'margin: 8px 0; padding: 6px; text-align: center; font-style: italic; color: rgba(255,255,255,0.8); border-top: 1px solid rgba(255,255,255,0.2);';
+            moreDiv.textContent = `📊 +${content.moreCount} more credential${content.moreCount > 1 ? 's' : ''} found`;
+            container.appendChild(moreDiv);
+        }
+
+        // Footer
+        const footer = document.createElement('div');
+        footer.style.cssText = 'margin-top: 12px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.3); font-size: 11px; color: rgba(255,255,255,0.8); text-align: center;';
+        footer.textContent = '💡 Click to dismiss • Check browser console for full details';
+        container.appendChild(footer);
+    }
+
+    /**
+     * Shows a notification popup
+     * @param {string|Object} content - Either a string message or an object with notification content
+     * @param {string} risk - Risk level (critical, high, medium, low)
+     */
+    function showNotification(content, risk = 'medium') {
+        // Remove any existing notifications
+        const existing = document.querySelectorAll('.cyber-labs-credential-notification');
+        existing.forEach(el => el.remove());
+
+        const notification = document.createElement('div');
+        notification.className = 'cyber-labs-credential-notification';
+
+        // Handle both string and object content
+        if (typeof content === 'string') {
+            notification.textContent = content;
+        } else if (content && typeof content === 'object') {
+            // Build notification DOM structure
+            buildNotificationContent(notification, content, risk);
+        }
+
+        Object.assign(notification.style, {
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            background: `linear-gradient(135deg, ${getRiskColor(risk)}, ${getDarkerRiskColor(risk)})`,
+            color: '#fff',
+            padding: '16px 20px',
+            borderRadius: '12px',
+            zIndex: '10000',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2)',
+            maxWidth: '420px',
+            minWidth: '320px',
+            fontSize: '13px',
+            lineHeight: '1.5',
+            cursor: 'pointer',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            border: '1px solid rgba(255,255,255,0.2)',
+            backdropFilter: 'blur(10px)',
+            transition: 'all 0.3s ease',
+            animation: 'slideInRight 0.3s ease-out'
+        });
+
+        // Add CSS animation keyframes
+        if (!document.getElementById('ferretwatch-animations')) {
+            const style = document.createElement('style');
+            style.id = 'ferretwatch-animations';
+            style.textContent = `
+                @keyframes slideInRight {
+                    from {
+                        transform: translateX(100%);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateX(0);
+                        opacity: 1;
+                    }
+                }
+
+                @keyframes slideOutRight {
+                    from {
+                        transform: translateX(0);
+                        opacity: 1;
+                    }
+                    to {
+                        transform: translateX(100%);
+                        opacity: 0;
+                    }
+                }
+
+                .cyber-labs-credential-notification:hover {
+                    transform: translateY(-2px) !important;
+                    box-shadow: 0 12px 40px rgba(0,0,0,0.4), 0 6px 20px rgba(0,0,0,0.3) !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        notification.addEventListener('click', () => {
+            notification.style.animation = 'slideOutRight 0.3s ease-in forwards';
+            setTimeout(() => {
+                if (notification.parentNode) notification.remove();
+            }, 300);
+            notificationDismissed = true;
+        });
+
+        // Auto-dismiss after 12 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.style.animation = 'slideOutRight 0.3s ease-in forwards';
+                setTimeout(() => {
+                    if (notification.parentNode) notification.remove();
+                }, 300);
+            }
+        }, 12000);
+
+        document.body.appendChild(notification);
+    }
+
+    /**
+     * Shows notification specifically for bucket findings
+     * @param {Array} allBucketFindings - All bucket findings
+     * @param {Array} newBucketFindings - New bucket findings to highlight
+     */
+    function showBucketNotification(allBucketFindings, newBucketFindings) {
+        const publicBuckets = allBucketFindings.filter(f => f.bucketInfo?.accessible === true);
+        const privateBuckets = allBucketFindings.filter(f => f.bucketInfo?.accessible === false);
+
+        // Determine highest risk level for buckets
+        const highestRisk = allBucketFindings.reduce((highest, f) => {
+            const riskLevels = ['low', 'medium', 'high', 'critical'];
+            const currentRisk = f.riskLevel || 'unknown';
+            const currentIndex = riskLevels.indexOf(currentRisk);
+            const highestIndex = riskLevels.indexOf(highest);
+            return currentIndex > highestIndex ? currentRisk : highest;
+        }, 'low');
+
+        // Create notification title based on bucket accessibility
+        let notificationTitle;
+        let emoji = '☁️';
+
+        if (publicBuckets.length > 0) {
+            emoji = '🚨';
+            if (newBucketFindings.some(f => f.bucketInfo?.accessible === true)) {
+                notificationTitle = `🆕 ${publicBuckets.length} Public Cloud Bucket${publicBuckets.length > 1 ? 's' : ''} Found`;
+            } else {
+                notificationTitle = `🚨 ${publicBuckets.length} Public Cloud Bucket${publicBuckets.length > 1 ? 's' : ''} Detected`;
+            }
+        } else {
+            if (newBucketFindings.length > 0) {
+                notificationTitle = `🆕 ${allBucketFindings.length} Cloud Bucket${allBucketFindings.length > 1 ? 's' : ''} Found`;
+            } else {
+                notificationTitle = `☁️ ${allBucketFindings.length} Cloud Bucket${allBucketFindings.length > 1 ? 's' : ''} Detected`;
+            }
+        }
+
+        // Show top 3 bucket findings, prioritizing public ones
+        const displayFindings = [...publicBuckets, ...privateBuckets].slice(0, 3);
+        const moreCount = allBucketFindings.length > 3 ? allBucketFindings.length - 3 : 0;
+
+        showNotification(
+            {
+                emoji: emoji,
+                title: notificationTitle,
+                findings: displayFindings,
+                moreCount: moreCount
+            },
+            highestRisk
+        );
+    }
+
+    /**
+     * Shows notification for regular (non-bucket) findings
+     * @param {Array} allRegularFindings - All regular findings
+     * @param {Array} newRegularFindings - New regular findings to highlight
+     */
+    function showRegularNotification(allRegularFindings, newRegularFindings) {
+        const highestRisk = allRegularFindings.reduce((highest, f) => {
+            const riskLevels = ['low', 'medium', 'high', 'critical'];
+            const currentRisk = f.riskLevel || 'unknown';
+            const currentIndex = riskLevels.indexOf(currentRisk);
+            const highestIndex = riskLevels.indexOf(highest);
+            return currentIndex > highestIndex ? currentRisk : highest;
+        }, 'low');
+
+        // Enhanced notification with better visual structure
+        const riskEmoji = {
+            critical: '🔥',
+            high: '⚠️',
+            medium: '📋',
+            low: '📝',
+            unknown: '❓'
+        }[highestRisk] || '📋';
+
+        const notificationTitle = newRegularFindings.length > 0 ?
+            `🆕 ${newRegularFindings.length} New Credential${newRegularFindings.length > 1 ? 's' : ''} Found` :
+            `🚨 ${allRegularFindings.length} Credential${allRegularFindings.length > 1 ? 's' : ''} Detected`;
+
+        const displayFindings = (newRegularFindings.length > 0 ? newRegularFindings : allRegularFindings).slice(0, 3);
+        const moreCount = allRegularFindings.length > 3 ? allRegularFindings.length - 3 : 0;
+
+        showNotification(
+            {
+                emoji: riskEmoji,
+                title: notificationTitle,
+                findings: displayFindings,
+                moreCount: moreCount
+            },
+            highestRisk
+        );
+    }
+
+    /**
+     * Resets the notification dismissed state
+     */
+    function resetNotificationDismissed() {
+        notificationDismissed = false;
+    }
+
+    /**
+     * Checks if notification was dismissed
+     * @returns {boolean}
+     */
+    function isNotificationDismissed() {
+        return notificationDismissed;
+    }
+
+    // Expose public API
+    window.FerretWatchNotifications = {
+        showNotification,
+        showBucketNotification,
+        showRegularNotification,
+        buildNotificationContent,
+        resetNotificationDismissed,
+        isNotificationDismissed
+    };
+
+})();

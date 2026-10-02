@@ -2,7 +2,7 @@
 
 ![CyberCyberLabs Logo](images/browser-extension-logo.svg)
 
-**FerretWatch v2.2.0** - A professional Firefox extension that automatically scans web pages for exposed credentials and secrets, including API keys, tokens, passwords, database connections, and more. With enhanced visual notifications, robust export functionality, debug mode, and false-positive prevention, it provides detailed findings through beautiful UI notifications and comprehensive export options.
+**FerretWatch v2.3.5** - A Firefox extension that automatically scans pages, scripts, and text responses for exposed credentials and secrets. Monitoring stays on during normal browsing. Firefox is the validated target; Chrome and Edge packages install, but response-body inspection uses a Firefox-only stream filter.
 
 ## Author
 
@@ -29,15 +29,15 @@
 - **CSV Export**: Spreadsheet-compatible format for analysis
 - **Comprehensive Data**: Timestamp, URL, risk levels, and audit trails
 
-### 🔍 Advanced Detection (50+ Patterns)
-- **AWS Credentials**: Access Keys, Secret Keys, Session Tokens
-- **GitHub Tokens**: Personal Access, Fine-grained, App Tokens  
-- **API Keys**: Google, Stripe, Twilio, SendGrid, Mailgun
-- **Database Connections**: MongoDB, MySQL, PostgreSQL, Redis
-- **Cloud Providers**: Azure Storage Keys, GCP Service Accounts
-- **Cloud Storage Buckets**: AWS S3, Google Cloud Storage, Azure Blob Storage with public access testing
-- **Authentication**: Bearer Tokens, SSH Private Keys
-- **Messaging Platforms**: Slack Bot/User Tokens, Discord Bot Tokens
+### 🔍 Detection (15 configured patterns)
+- **AWS**: Access key IDs and secret access keys
+- **GitHub**: Personal access, fine-grained, and app tokens
+- **Stripe and SendGrid**: API keys
+- **Slack**: Bot and user tokens
+- **Databases**: MongoDB, MySQL, and PostgreSQL connection strings
+- **Cloud storage URLs**: AWS S3, Google Cloud Storage, and Azure Blob containers
+
+Public-access probes for discovered buckets are optional and off when `testPublicAccess` is false. A failed probe is reported as untested, timed out, or a network or parse failure. It is not labeled as a secured bucket.
 
 ### 🛡️ False Positive Prevention
 - **Context-Aware Matching**: Excludes HTML attributes and client-side contexts
@@ -52,20 +52,20 @@
 - **Domain Whitelist**: Permanently disable scanning for specific domains and subdomains
 - **Export Functionality**: Export findings in JSON or CSV format with unmasked values for security analysis
 - **Detailed Console Logging**: Full findings with masked values for security
-- **Manual Rescanning**: Use the extension popup to rescan updated pages (automatic scanning disabled for performance)
-- **Privacy-Focused**: All processing happens locally in your browser
+- **Automatic scanning**: Page content, later DOM updates, scripts, and supported text responses are scanned without opening the popup
+- **Privacy-Focused**: Secret matching runs locally. Bucket public-access probes, when enabled, contact the bucket host
 
 ## How It Works
 1. The extension injects a content script into every web page
 2. It scans the HTML content using advanced regular expressions
 3. Found credentials are filtered to reduce false positives
 4. Results are displayed via notification popup and detailed console logs
-5. Manual rescanning available through extension popup (automatic scanning disabled for better performance)
+5. Later DOM updates and supported text responses are scanned automatically. The popup can rescan, dismiss, and export the same findings
 
 ## Installation
 
 ### From Pre-built Package (Recommended)
-1. Download the latest `ferretwatch-firefox-v2.2.0.zip` from the dist/ folder
+1. Download the latest `ferretwatch-firefox-v2.3.5.zip` from the dist/ folder
 2. Extract the ZIP file to a permanent location on your computer
 3. Open Firefox and navigate to `about:debugging`
 4. Click "This Firefox" on the left sidebar
@@ -151,20 +151,21 @@ You can modify the detection patterns in `config/patterns.js` by editing the `DE
 ## Security Features
 - **Unmasked Exports**: Export functionality provides full credential values for security analysis
 - **Handle Exports Securely**: Exported files contain sensitive data - delete after analysis
-- **Local Processing**: All scanning happens locally, no data sent to external servers
-- **Privacy-Focused**: Your browsing data never leaves your device
+- **Local matching**: Pattern matching stays in the browser
+- **Bucket probes**: When public-access testing is enabled, the extension requests the discovered bucket URL. Those requests are separate from monitoring and from API replay
 
 ## Performance Notes
-- The extension scans only once per page load to minimize CPU usage
-- Automatic rescanning is disabled by default (can be manually enabled in code)
-- It processes content efficiently without blocking the browser
-- Memory usage is minimal with automatic cleanup
-- For dynamic content, use manual rescanning via the extension popup
+- Monitoring does not wrap page `fetch` or `XMLHttpRequest` unless the diagnostic `pageInterceptor` setting is turned on
+- Firefox inspects script and text responses with `webRequest.filterResponseData`, forwarding the original bytes before scanning
+- Chrome and Edge do not provide that filter. They still scan the loaded document. Response-body monitoring is unsupported there
+- Capture stops at 256 KB per response and 1 MB retained per tab. The page transfer continues
+- Dismissal lasts until the next navigation. Export includes dismissed findings and marks them
+- A real Cloudflare challenge page has not been verified. Leave that check open until an affected URL is tested
 
 ## Privacy & Security
-- **No Data Transmission**: All scanning happens locally in your browser
-- **No External Connections**: The extension never sends data to external servers  
-- **Masked Console Logging**: Sensitive values are masked in console output for security
+- **No telemetry**: Findings are not uploaded
+- **Bucket probes and explicit replay** are the only extension-initiated requests, and replay never substitutes a different tab
+- **Masked Console Logging**: Page notifications and automatic logs mask secret values. Copy and export in the extension UI return the original value
 - **Unmasked Exports**: Export files contain full credential values for analysis purposes
 - **Local Processing Only**: Your browsing data stays on your device
 - **Secure Export Handling**: Delete exported files after analysis to prevent credential exposure
@@ -178,8 +179,8 @@ You can modify the detection patterns in `config/patterns.js` by editing the `DE
 - **Settings page looks broken**: Fixed in v1.5.4 - settings now display in a proper modal interface
 - **Domain whitelist not working**: Added in v1.6.0 - persistent domain whitelisting with subdomain support
 - **Highlight feature removed**: Removed in v1.6.5 - streamlined interface focuses on core scanning functionality
-- **Performance issues**: The extension now scans only once per page to save CPU. For dynamic content, manually rescan using the extension icon
-- **High CPU usage**: Automatic rescanning is disabled by default. If you enabled it in the code, set `enableDynamicScanning = false`
+- **Performance issues**: Inspection is bounded per response and per tab. A limit marks the scan truncated and does not cancel the page request
+- **Run tests**: `node tests/test-runner.js --no-performance`. A failed assertion exits nonzero
 
 ## Architecture
 This extension uses a professional, modular architecture for maximum reliability:

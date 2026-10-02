@@ -65,12 +65,20 @@ class TestFramework {
      */
     async runAll() {
         console.log('🧪 Starting test suite...\n');
-        
-        this.results = { passed: 0, failed: 0, skipped: 0, total: 0 };
-        
+
+        const started = Date.now();
+        this.results = {
+            passed: 0,
+            failed: 0,
+            skipped: 0,
+            total: 0,
+            failures: [],
+            executionTime: 0
+        };
+
         for (const test of this.tests) {
             this.results.total++;
-            
+
             if (test.skip) {
                 console.log(`⏭️  SKIP: ${test.description}`);
                 this.results.skipped++;
@@ -78,24 +86,21 @@ class TestFramework {
             }
 
             this.currentTest = test;
-            
+
             try {
-                // Run before hooks
                 for (const hook of this.beforeHooks) {
                     await hook();
                 }
 
-                // Run the actual test
                 await test.testFn();
-                
-                // Run after hooks
+
                 for (const hook of this.afterHooks) {
                     await hook();
                 }
 
                 console.log(`✅ PASS: ${test.description}`);
                 this.results.passed++;
-                
+
             } catch (error) {
                 console.log(`❌ FAIL: ${test.description}`);
                 console.log(`   Error: ${error.message}`);
@@ -103,9 +108,14 @@ class TestFramework {
                     console.log(`   Stack: ${error.stack.split('\n')[1]?.trim()}`);
                 }
                 this.results.failed++;
+                this.results.failures.push({
+                    testName: test.description,
+                    error: error && error.message ? error.message : String(error)
+                });
             }
         }
 
+        this.results.executionTime = Date.now() - started;
         this.printSummary();
         return this.results;
     }

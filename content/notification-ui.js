@@ -74,7 +74,9 @@
                 valueDiv.style.cssText = 'font-family: monospace; font-size: 12px; color: rgba(255,255,255,0.9); display: flex; justify-content: space-between; align-items: center;';
 
                 const valueText = document.createElement('span');
-                valueText.textContent = finding.value; // Show actual value without masking
+                const mask = window.FerretWatchContracts ? window.FerretWatchContracts.maskSecret : function(v) { return '••••'; };
+                const maskContext = window.FerretWatchContracts ? window.FerretWatchContracts.maskContext : function(c) { return c; };
+                valueText.textContent = mask(finding.value);
                 valueDiv.appendChild(valueText);
 
                 // Add copy button for bucket URLs
@@ -114,7 +116,8 @@
                 else if (finding.context && finding.context.trim() !== '' && finding.context !== 'N/A') {
                     const contextDiv = document.createElement('div');
                     contextDiv.style.cssText = 'font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 4px; font-style: italic;';
-                    contextDiv.textContent = `"${finding.context.substring(0, 50)}${finding.context.length > 50 ? '...' : ''}"`;
+                    const shown = maskContext(finding.context, finding.value);
+                    contextDiv.textContent = `"${shown.substring(0, 50)}${shown.length > 50 ? '...' : ''}"`;
                     findingDiv.appendChild(contextDiv);
                 }
 

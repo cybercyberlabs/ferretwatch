@@ -126,6 +126,30 @@ function isSuspiciousContext(match, context) {
  * @param {string} html - HTML content
  * @returns {string} Visible text content only
  */
+function extractScriptBodies(html) {
+    if (!html || typeof html !== 'string') return '';
+    const bodies = [];
+    const re = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+    let match;
+    while ((match = re.exec(html))) {
+        if (match[1] && match[1].trim()) {
+            bodies.push(match[1]);
+        }
+    }
+    return bodies.join('\n');
+}
+
+function extractAttributeValues(html) {
+    if (!html || typeof html !== 'string') return '';
+    const values = [];
+    const re = /\b(?:href|src|content|value|data-[\w-]+)\s*=\s*["']([^"']+)["']/gi;
+    let match;
+    while ((match = re.exec(html))) {
+        values.push(match[1]);
+    }
+    return values.join('\n');
+}
+
 function extractVisibleText(html) {
     if (!html || typeof html !== 'string') return '';
     
@@ -161,7 +185,9 @@ if (typeof module !== 'undefined' && module.exports) {
         isMinifiedJavaScript,
         filterContent,
         isSuspiciousContext,
-        extractVisibleText
+        extractVisibleText,
+        extractScriptBodies,
+        extractAttributeValues
     };
 }
 
@@ -173,6 +199,8 @@ if (typeof window !== 'undefined') {
         isMinifiedJavaScript,
         filterContent,
         isSuspiciousContext,
-        extractVisibleText
+        extractVisibleText,
+        extractScriptBodies,
+        extractAttributeValues
     };
 }

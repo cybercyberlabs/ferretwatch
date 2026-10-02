@@ -14,29 +14,57 @@ let cachedDebugMode = false;
             cachedDebugMode = result.debugMode || false;
         }
     } catch (e) {
-        // Ignore errors during initialization
+        // Storage API not available during initialization - use default value
+        console.debug('Could not load debugMode from storage:', e.message);
+        cachedDebugMode = false;
     }
 })();
 
 // Listen for debugMode changes
-if (typeof browser !== 'undefined' && browser.storage) {
-    browser.storage.onChanged.addListener((changes, area) => {
-        if (area === 'local' && changes.debugMode) {
-            cachedDebugMode = changes.debugMode.newValue || false;
+function watchStorage(api) {
+    if (!api || !api.storage || !api.storage.onChanged) {
+        return;
+    }
+    api.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local') {
+            return;
         }
-    });
-} else if (typeof chrome !== 'undefined' && chrome.storage) {
-    chrome.storage.onChanged.addListener((changes, area) => {
-        if (area === 'local' && changes.debugMode) {
+        if (changes.settings && changes.settings.newValue) {
+            applySettings(changes.settings.newValue);
+        } else if (changes.debugMode) {
             cachedDebugMode = changes.debugMode.newValue || false;
         }
     });
 }
+watchStorage(typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null));
+
+let settingsCache = null;
+let settingsReady = null;
+
+function extensionApi() {
+    if (typeof browser !== 'undefined' && browser.storage) {
+        return browser;
+    }
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+        return chrome;
+    }
+    return null;
+}
+
+function contracts() {
+    if (typeof FerretWatchContracts !== 'undefined') {
+        return FerretWatchContracts;
+    }
+    if (typeof window !== 'undefined' && window.FerretWatchContracts) {
+        return window.FerretWatchContracts;
+    }
+    return null;
+}
 
 /**
- * Default settings for the extension
+ * Default settings for the extension. Categories match config/patterns.js.
  */
-const DEFAULT_SETTINGS = {
+const DEFAULT_SETTINGS = contracts() ? contracts().defaultSettings() : {
     // Pattern toggles
     enabledCategories: {
         aws: true,
@@ -97,24 +125,53 @@ const DEFAULT_SETTINGS = {
  * @param {any} defaultValue - Default value if setting not found
  * @returns {any} Setting value
  */
+function activeSettings() {
+    return settingsCache || DEFAULT_SETTINGS;
+}
+
+async function loadExtensionSettings() {
+    const api = extensionApi();
+    const lib = contracts();
+    if (!api) {
+        settingsCache = lib ? lib.defaultSettings() : { ...DEFAULT_SETTINGS };
+        return settingsCache;
+    }
+    const stored = await api.storage.local.get(['settings', 'userSettings', 'whitelistedDomains', 'debugMode']);
+    settingsCache = lib ? lib.migrateStoredSettings(stored) : { ...DEFAULT_SETTINGS, ...(stored.settings || {}) };
+    cachedDebugMode = !!settingsCache.debugMode;
+    if (!stored.settings) {
+        await api.storage.local.set({ settings: settingsCache });
+    }
+    return settingsCache;
+}
+
+function ensureSettings() {
+    if (!settingsReady) {
+        settingsReady = loadExtensionSettings().catch((error) => {
+            console.debug('Could not load extension settings:', error.message);
+            settingsCache = contracts() ? contracts().defaultSettings() : { ...DEFAULT_SETTINGS };
+            return settingsCache;
+        });
+    }
+    return settingsReady;
+}
+
+function applySettings(next) {
+    const lib = contracts();
+    settingsCache = lib ? lib.migrateStoredSettings({ settings: next }) : { ...DEFAULT_SETTINGS, ...next };
+    cachedDebugMode = !!settingsCache.debugMode;
+    settingsReady = Promise.resolve(settingsCache);
+    return settingsCache;
+}
+
 function getSetting(key, defaultValue = null) {
-    // Special handling for debugMode - use cached value from browser.storage
-    if (key === 'debugMode') {
+    if (key === 'debugMode' && settingsCache == null) {
         return cachedDebugMode;
     }
-
-    try {
-        // For other settings, try localStorage
-        if (typeof localStorage !== 'undefined') {
-            const stored = localStorage.getItem('cyberlabs-scanner-settings');
-            const settings = stored ? JSON.parse(stored) : DEFAULT_SETTINGS;
-            const value = getNestedValue(settings, key);
-            return value !== undefined ? value : defaultValue;
-        }
-    } catch (error) {
-        console.error('Error getting setting:', key, error);
+    const value = getNestedValue(activeSettings(), key);
+    if (value !== undefined) {
+        return value;
     }
-
     return defaultValue !== null ? defaultValue : getNestedValue(DEFAULT_SETTINGS, key);
 }
 
@@ -126,25 +183,17 @@ function getSetting(key, defaultValue = null) {
  */
 async function setSetting(key, value) {
     try {
-        // For browser environment
-        if (typeof browser !== 'undefined' && browser.storage) {
-            const result = await browser.storage.local.get('settings');
-            const settings = result.settings || { ...DEFAULT_SETTINGS };
-            setNestedValue(settings, key, value);
-            await browser.storage.local.set({ settings });
-            return true;
-        } else if (typeof localStorage !== 'undefined') {
-            // Fallback to localStorage
-            const stored = localStorage.getItem('cyberlabs-scanner-settings');
-            const settings = stored ? JSON.parse(stored) : { ...DEFAULT_SETTINGS };
-            setNestedValue(settings, key, value);
-            localStorage.setItem('cyberlabs-scanner-settings', JSON.stringify(settings));
-            return true;
+        const api = extensionApi();
+        const settings = { ...activeSettings() };
+        setNestedValue(settings, key, value);
+        applySettings(settings);
+        if (api) {
+            await api.storage.local.set({ settings: settingsCache });
         }
+        return true;
     } catch (error) {
         console.error('Error setting value:', key, error);
     }
-    
     return false;
 }
 
@@ -153,16 +202,7 @@ async function setSetting(key, value) {
  * @returns {object} All settings
  */
 function getAllSettings() {
-    try {
-        if (typeof localStorage !== 'undefined') {
-            const stored = localStorage.getItem('cyberlabs-scanner-settings');
-            return stored ? { ...DEFAULT_SETTINGS, ...JSON.parse(stored) } : { ...DEFAULT_SETTINGS };
-        }
-    } catch (error) {
-        console.error('Error getting all settings:', error);
-    }
-    
-    return { ...DEFAULT_SETTINGS };
+    return { ...activeSettings() };
 }
 
 /**
@@ -171,17 +211,15 @@ function getAllSettings() {
  */
 async function resetSettings() {
     try {
-        if (typeof browser !== 'undefined' && browser.storage) {
-            await browser.storage.local.set({ settings: { ...DEFAULT_SETTINGS } });
-            return true;
-        } else if (typeof localStorage !== 'undefined') {
-            localStorage.setItem('cyberlabs-scanner-settings', JSON.stringify(DEFAULT_SETTINGS));
-            return true;
+        const api = extensionApi();
+        applySettings(contracts() ? contracts().defaultSettings() : { ...DEFAULT_SETTINGS });
+        if (api) {
+            await api.storage.local.set({ settings: settingsCache });
         }
+        return true;
     } catch (error) {
         console.error('Error resetting settings:', error);
     }
-    
     return false;
 }
 
@@ -192,11 +230,11 @@ async function resetSettings() {
  */
 function isDomainWhitelisted(domain) {
     const whitelist = getSetting('whitelistedDomains', []);
-    return whitelist.some(pattern => {
-        // Support wildcards
-        const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$', 'i');
-        return regex.test(domain);
-    });
+    const lib = contracts();
+    if (lib) {
+        return lib.hostMatchesWhitelist(domain, whitelist);
+    }
+    return Array.isArray(whitelist) && whitelist.indexOf(domain) !== -1;
 }
 
 /**
@@ -256,6 +294,9 @@ if (typeof module !== 'undefined' && module.exports) {
         setSetting,
         getAllSettings,
         resetSettings,
+        loadExtensionSettings,
+        ensureSettings,
+        applySettings,
         isDomainWhitelisted,
         isCategoryEnabled,
         isBucketScanningEnabled,
@@ -272,6 +313,9 @@ if (typeof window !== 'undefined') {
         setSetting,
         getAllSettings,
         resetSettings,
+        loadExtensionSettings,
+        ensureSettings,
+        applySettings,
         isDomainWhitelisted,
         isCategoryEnabled,
         isBucketScanningEnabled,

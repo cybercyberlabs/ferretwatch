@@ -24,6 +24,7 @@
         "<all_urls>"
       ],
       "js": [
+        "utils/contracts.js",
         "config/patterns.js",
         "utils/storage.js",
         "utils/context.js",
@@ -77,10 +78,6 @@
     }
   },
   "host_permissions": [
-    "<all_urls>",
-    "storage",
-    "activeTab",
-    "webRequest",
-    "webRequestBlocking"
+    "<all_urls>"
   ]
 }

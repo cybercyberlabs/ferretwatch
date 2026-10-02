@@ -319,7 +319,8 @@ async function replayRequest() {
                 const jsonObj = JSON.parse(response.body);
                 formattedBody = JSON.stringify(jsonObj, null, 2);
             } catch (e) {
-                // Not JSON, use as-is
+                // Not valid JSON - display as plain text
+                console.debug('Response body is not JSON, displaying as plain text');
             }
 
             // Create expandable response viewer
@@ -909,7 +910,8 @@ function selectUnusedEndpoint(index) {
             const scriptOriginHost = new URL(endpoint.scriptOrigin).hostname;
             scriptOriginInfo = `<div class="result-info">📜 Script Origin: ${scriptOriginHost}</div>`;
         } catch (e) {
-            // Invalid URL
+            // Invalid URL format - skip script origin display
+            console.debug('Invalid script origin URL:', endpoint.scriptOrigin);
         }
     }
 

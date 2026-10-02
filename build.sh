@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-VERSION="2.3.1"
+VERSION="$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' manifest.json | head -1)"
 BUILD_DIR="builds"
 DIST_DIR="$(pwd)/dist"
 
@@ -133,7 +133,7 @@ create_chrome_manifest() {
             del(.background.scripts) |
             .action = .browser_action |
             del(.browser_action) |
-            .host_permissions = .permissions |
+            .host_permissions = [.permissions[] | select(test("^(<all_urls>|\\*|https?://|wss?://|file://|ftp://)"))] |
             .permissions = ["storage", "activeTab", "scripting"] |
             .web_accessible_resources = [{"resources": .web_accessible_resources, "matches": ["<all_urls>"]}]' \
             manifest.json > "$target_dir/manifest.json"

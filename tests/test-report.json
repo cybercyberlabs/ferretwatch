@@ -2,28 +2,24 @@
   "metadata": {
     "extensionName": "Firefox Credential Scanner",
     "version": "1.5.0",
-    "testRunDate": "2025-08-27T13:20:46.837Z",
-    "testDuration": 44,
-    "nodeVersion": "v18.19.1",
+    "testRunDate": "2026-10-02T09:53:40.373Z",
+    "testDuration": 109,
+    "nodeVersion": "v20.19.5",
     "testFramework": "Custom TestFramework v1.0"
   },
   "summary": {
-    "passed": 0,
-    "failed": 1,
-    "total": 1,
-    "executionTime": 0,
+    "passed": 16,
+    "failed": 0,
+    "total": 16,
+    "executionTime": 95,
     "suiteResults": {
-      "patterns": {
-        "passed": 0,
-        "failed": 1,
-        "total": 1,
-        "executionTime": 0,
-        "failures": [
-          {
-            "testName": "Suite Error",
-            "error": "Cannot read properties of undefined (reading 'forEach')"
-          }
-        ]
+      "regression": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0,
+        "total": 16,
+        "failures": [],
+        "executionTime": 95
       }
     }
   },
@@ -32,58 +28,52 @@
     "integration": null,
     "performance": null,
     "overall": {
-      "passed": 0,
-      "failed": 1,
-      "total": 1,
-      "executionTime": 0,
+      "passed": 16,
+      "failed": 0,
+      "total": 16,
+      "executionTime": 95,
       "suiteResults": {
-        "patterns": {
-          "passed": 0,
-          "failed": 1,
-          "total": 1,
-          "executionTime": 0,
-          "failures": [
-            {
-              "testName": "Suite Error",
-              "error": "Cannot read properties of undefined (reading 'forEach')"
-            }
-          ]
+        "regression": {
+          "passed": 16,
+          "failed": 0,
+          "skipped": 0,
+          "total": 16,
+          "failures": [],
+          "executionTime": 95
         }
       }
     },
-    "patterns": {
-      "passed": 0,
-      "failed": 1,
-      "total": 1,
-      "executionTime": 0,
-      "failures": [
-        {
-          "testName": "Suite Error",
-          "error": "Cannot read properties of undefined (reading 'forEach')"
-        }
-      ]
+    "regression": {
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "total": 16,
+      "failures": [],
+      "executionTime": 95
     }
   },
   "performance": {
-    "averageTestTime": 0,
+    "averageTestTime": 5.9375,
     "slowestSuite": {
-      "name": "none",
-      "time": 0
+      "name": "regression",
+      "time": 95
     },
     "memoryUsage": {
-      "heapUsed": 4,
-      "heapTotal": 8,
-      "external": 2
+      "heapUsed": 5,
+      "heapTotal": 7,
+      "external": 1
     }
   },
   "coverage": {
-    "unit": "patterns, entropy, masking",
+    "unit": "not run",
     "integration": "not run",
     "performance": "not run"
   },
   "recommendations": [
-    "Address 1 failing test(s) before deployment",
+    "Add unit tests for core functionality",
     "Add integration tests for end-to-end workflows",
-    "Add performance benchmarks for production readiness"
+    "Add performance benchmarks for production readiness",
+    "All tests passing - extension ready for deployment",
+    "Consider adding more edge case tests for robustness"
   ]
 }

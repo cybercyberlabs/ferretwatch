@@ -64,7 +64,14 @@
     // Scanner state
     let scanner = null;
     let lastScanResults = [];
+    let lastScanState = 'pending';
     let seenCredentials = new Set();
+    const dismissedIds = new Set();
+
+    function maskValue(value) {
+        const lib = window.FerretWatchContracts;
+        return lib ? lib.maskSecret(value) : '••••';
+    }
 
     /**
      * Load settings from storage into cache
@@ -76,9 +83,13 @@
                 return;
             }
 
-            const result = await api.storage.local.get(['userSettings', 'debugMode']);
-            if (result.userSettings) {
-                settingsCache = { ...settingsCache, ...result.userSettings };
+            if (window.StorageUtils && window.StorageUtils.ensureSettings) {
+                const unified = await window.StorageUtils.ensureSettings();
+                settingsCache = { ...settingsCache, ...unified };
+            }
+            const result = await api.storage.local.get(['settings', 'debugMode']);
+            if (result.settings) {
+                settingsCache = { ...settingsCache, ...result.settings };
             }
             // Load debug mode setting separately
             if (result.debugMode !== undefined) {
@@ -151,13 +162,10 @@
             }[finding.riskLevel] || '❓';
 
             if (finding.bucketInfo) {
-                // Bucket finding
-                const accessStatus = finding.bucketInfo.testResults?.listingEnabled ? 'PUBLIC LISTING' :
-                    finding.bucketInfo.testResults?.accessible ? 'ACCESSIBLE' : 'SECURED';
-                console.warn(`${riskEmoji} [${finding.riskLevel?.toUpperCase()}] ${finding.type}: ${finding.value} (${accessStatus})`);
+                const accessStatus = finding.accessStatus || finding.bucketInfo.accessStatus || 'untested';
+                console.warn(`${riskEmoji} [${finding.riskLevel?.toUpperCase()}] ${finding.type}: ${maskValue(finding.value)} (${accessStatus})`);
             } else {
-                // Regular finding
-                console.warn(`${riskEmoji} [${finding.riskLevel?.toUpperCase()}] ${finding.type}: ${finding.value}`);
+                console.warn(`${riskEmoji} [${finding.riskLevel?.toUpperCase()}] ${finding.type}: ${maskValue(finding.value)}`);
             }
         });
 
@@ -186,8 +194,7 @@
             if (allBucketFindings.length > 0 && showBucketNotification) {
                 showBucketNotification(allBucketFindings, newBucketFindings);
             }
-            // Show regular notification if there are regular findings
-            else if (allRegularFindings.length > 0 && showRegularNotification) {
+            if (allRegularFindings.length > 0 && showRegularNotification) {
                 showRegularNotification(allRegularFindings, newRegularFindings);
             }
         } else {
@@ -205,13 +212,7 @@
      * Run a security scan on the current page
      * @returns {Promise<Array>} Array of findings
      */
-    async function runScan() {
-        if (!scanner) {
-            console.error('[FW Scanner] Scanner not initialized');
-            return [];
-        }
-
-        // 1. Get patterns from the global scope (loaded from config/patterns.js)
+    function collectPatterns() {
         const allPatterns = [];
         if (window.SECURITY_PATTERNS) {
             for (const category in window.SECURITY_PATTERNS) {
@@ -219,39 +220,113 @@
                     const patternConfig = window.SECURITY_PATTERNS[category][key];
                     if (patternConfig.pattern) {
                         allPatterns.push({
+                            id: key,
                             regex: patternConfig.pattern,
                             type: patternConfig.description,
                             risk: patternConfig.riskLevel,
-                            riskLevel: patternConfig.riskLevel, // Add this for consistency
-                            category: patternConfig.category || category, // Use pattern's category if specified
-                            provider: patternConfig.provider
+                            riskLevel: patternConfig.riskLevel,
+                            category: patternConfig.category || category,
+                            provider: patternConfig.provider,
+                            excludePattern: patternConfig.excludePattern
                         });
                     }
                 }
             }
         }
+        if (window.patternManager && typeof window.patternManager.getAllPatterns === 'function') {
+            return window.patternManager.getAllPatterns();
+        }
+        return allPatterns;
+    }
 
-        // 2. Run the scan using the ProgressiveScanner
-        const content = document.documentElement.innerHTML;
-        let findings = await scanner.progressiveScan(content, allPatterns);
-
-        // 3. Run bucket scanning if enabled and bucket findings exist
-        if (scanner.isBucketScanningEnabled && typeof scanner.isBucketScanningEnabled === 'function' && scanner.isBucketScanningEnabled()) {
-            try {
-                const bucketFindings = await scanner.scanCloudBuckets(findings);
-                if (bucketFindings && bucketFindings.length > 0) {
-                    // Replace original bucket findings with enhanced ones
-                    const nonBucketFindings = findings.filter(f => !f.category || f.category !== 'cloudStorage');
-                    findings = [...nonBucketFindings, ...bucketFindings];
-                }
-            } catch (error) {
-                debugLog('Bucket scanning failed:', error);
+    function reportScan(findings, state) {
+        const visible = findings.filter((finding) => !dismissedIds.has(finding.id));
+        lastScanResults = visible;
+        lastScanState = state;
+        window.lastScanResults = visible;
+        if (!api.runtime) {
+            return;
+        }
+        api.runtime.sendMessage({
+            type: 'SCAN_REPORT',
+            data: {
+                pageUrl: window.location.href,
+                findings,
+                state
             }
+        }).catch(() => {});
+    }
+
+    async function runScan() {
+        if (isDomainWhitelisted()) {
+            lastScanState = 'skipped';
+            lastScanResults = [];
+            reportScan([], 'skipped');
+            return { state: 'skipped', findings: [] };
+        }
+        if (!scanner) {
+            console.error('[FW Scanner] Scanner not initialized');
+            lastScanState = 'failed';
+            return { state: 'failed', findings: [], error: 'Scanner not initialized' };
         }
 
-        // 4. Process the results
+        const allPatterns = collectPatterns();
+        const content = document.documentElement ? document.documentElement.innerHTML : '';
+        let findings = [];
+        try {
+            findings = await scanner.progressiveScan(content, allPatterns, {
+                sourceUrl: window.location.href
+            });
+            lastScanState = scanner.lastScanState || 'success';
+        } catch (error) {
+            lastScanState = 'failed';
+            return { state: 'failed', findings: [], error: error.message };
+        }
+
         processFindings(findings);
-        return findings;
+        reportScan(findings, lastScanState);
+        return { state: lastScanState, findings: lastScanResults };
+    }
+
+    async function runScanText(text, options) {
+        if (isDomainWhitelisted() || !scanner || !text) {
+            return { state: 'skipped', findings: [] };
+        }
+        const findings = await scanner.progressiveScan(text, collectPatterns(), {
+            sourceKind: (options && options.sourceKind) || 'dom',
+            sourceUrl: (options && options.sourceUrl) || window.location.href,
+            skipBucketProbes: true
+        });
+        const state = scanner.lastScanState || 'success';
+        if (findings.length) {
+            processFindings(findings);
+            const merged = dedupeFindings(lastScanResults.concat(findings));
+            reportScan(merged, state);
+        }
+        return { state, findings };
+    }
+
+    function dedupeFindings(findings) {
+        const seen = new Set();
+        const unique = [];
+        findings.forEach((finding) => {
+            const key = finding.id || ((finding.type || '') + finding.value);
+            if (!seen.has(key)) {
+                seen.add(key);
+                unique.push(finding);
+            }
+        });
+        return unique;
+    }
+
+    function dismissFinding(idOrValue) {
+        lastScanResults.forEach((finding) => {
+            if (finding.id === idOrValue || finding.value === idOrValue) {
+                dismissedIds.add(finding.id || finding.value);
+            }
+        });
+        lastScanResults = lastScanResults.filter((finding) => !dismissedIds.has(finding.id) && finding.value !== idOrValue);
+        window.lastScanResults = lastScanResults;
     }
 
     /**
@@ -267,6 +342,8 @@
 
             if (isDomainWhitelisted()) {
                 debugLog('[FW Content] FerretWatch disabled for whitelisted domain:', currentDomain);
+                lastScanState = 'skipped';
+                reportScan([], 'skipped');
                 return;
             }
 
@@ -321,7 +398,10 @@
         setScanner,
         getScanner,
         getLastScanResults,
-        resetSeenCredentials
+        getLastScanState: function() { return lastScanState; },
+        resetSeenCredentials,
+        runScanText,
+        dismissFinding
     };
 
     // Note: StorageUtils is provided by utils/storage.js which is loaded before this script

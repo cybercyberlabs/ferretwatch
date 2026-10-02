@@ -17,8 +17,12 @@
     "webRequest",
     "webRequestBlocking"
   ],
-  "background": {
+    "background": {
     "scripts": [
+      "utils/contracts.js",
+      "config/patterns.js",
+      "utils/context.js",
+      "utils/scanner.js",
       "background.js"
     ]
   },
@@ -39,6 +43,7 @@
         "<all_urls>"
       ],
       "js": [
+        "utils/contracts.js",
         "config/patterns.js",
         "utils/storage.js",
         "utils/context.js",

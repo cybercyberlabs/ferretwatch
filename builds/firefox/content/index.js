@@ -1,1 +1,313 @@
-!function(){"use strict";const e="undefined"!=typeof browser?browser:chrome,n=undefined,t=(window.FerretWatchConstants||{}).SCANNER_INIT_DELAY||100,i=window.FerretWatchUtils||{},r=window.FerretWatchWhitelist||{},o=window.FerretWatchInterceptor||{},s=window.FerretWatchMessages||{},c=window.FerretWatchScanner||{},a=window.FerretWatchNotifications||{},d=i.debugLog||(()=>{}),l=i.infoLog||(()=>{}),u=i.warnLog||console.warn,S=i.errorLog||console.error,w=i.criticalLog||console.error;let f=null;async function W(){try{"undefined"!=typeof ProgressiveScanner?(f=new ProgressiveScanner,c.setScanner(f),await c.initializeScanner()):console.error("[FW Content] ProgressiveScanner not available")}catch(e){console.error("[FW Content] Scanner initialization error:",e)}}async function E(){try{if(d("[FW Content] Early initialization at document_start"),r.loadWhitelist&&await r.loadWhitelist(),r.isDomainWhitelisted&&r.isDomainWhitelisted())return void d("[FW Content] Domain is whitelisted - skipping interceptor injection");if(o.injectInterceptor){const e=undefined;o.injectInterceptor(r.isDomainWhitelisted)&&d("[FW Content] Interceptor injected at document_start")}}catch(e){console.error("[FW Content] Early injection error:",e)}}function g(){s.initializeMessageListener&&s.initializeMessageListener(),e.runtime&&e.runtime.onMessage.addListener(((e,n,t)=>"SCAN_NOW"===e.action?(c.runScan?c.runScan().then((e=>{t({success:!0,findings:e})})).catch((e=>{t({success:!1,error:e.message})})):t({success:!1,error:"Scanner not initialized"}),!0):"GET_LAST_RESULTS"===e.action?(c.getLastScanResults?t({success:!0,results:c.getLastScanResults()}):t({success:!1,error:"Scanner not initialized"}),!1):"RESET_SEEN_CREDENTIALS"===e.action?(c.resetSeenCredentials&&c.resetSeenCredentials(),a.resetNotificationDismissed&&a.resetNotificationDismissed(),t({success:!0}),!1):"scanUnusedEndpoints"===e.action?((async()=>{try{if("undefined"==typeof EndpointScanner)return void t({success:!1,error:"EndpointScanner not loaded"});d("[FW Content] Starting endpoint scan...");const e=new EndpointScanner,n=await e.scanPage();d(`[FW Content] Scan complete: ${n.total} endpoints found`),t({success:!0,discovered:n.endpoints,total:n.total,scannedAt:n.scannedAt})}catch(e){console.error("[FW Content] Endpoint scan error:",e),t({success:!1,error:e.message})}})(),!0):void 0))}async function h(){d("[FW Content] FerretWatch Content Script initialized"),await E(),g(),"loading"===document.readyState?document.addEventListener("DOMContentLoaded",W):setTimeout(W,t)}window.isValidSecret=function(e,n){if(!e)return!1;if(window.FALSE_POSITIVE_PATTERNS)for(const n of window.FALSE_POSITIVE_PATTERNS)if(n.test(e))return!1;return!0},Object.defineProperty(window,"scanner",{get:function(){return f},set:function(e){f=e,c.setScanner&&c.setScanner(e)}}),h()}();
+/**
+ * FerretWatch - Content Script Main Orchestrator
+ *
+ * This is the main entry point that coordinates all content script modules.
+ * Requires all other modules to be loaded first.
+ */
+
+(function() {
+    'use strict';
+
+    // Browser API reference
+    const api = (typeof browser !== 'undefined' ? browser : chrome);
+
+    // Get constants
+    const constants = window.FerretWatchConstants || {};
+    const SCANNER_INIT_DELAY = constants.SCANNER_INIT_DELAY || 100;
+
+    // Get module references
+    const utils = window.FerretWatchUtils || {};
+    const whitelist = window.FerretWatchWhitelist || {};
+    const interceptor = window.FerretWatchInterceptor || {};
+    const messages = window.FerretWatchMessages || {};
+    const scanner = window.FerretWatchScanner || {};
+    const notifications = window.FerretWatchNotifications || {};
+
+    // Module functions - use utility logging functions that respect debug level
+    const debugLog = utils.debugLog || (() => {});
+    const infoLog = utils.infoLog || (() => {});
+    const warnLog = utils.warnLog || console.warn;
+    const errorLog = utils.errorLog || console.error;
+    const criticalLog = utils.criticalLog || console.error;
+
+    // Global state
+    let scannerInstance = null;
+    let domObserver = null;
+    let domTimer = null;
+    let monitoringStopped = false;
+
+    function contracts() {
+        return window.FerretWatchContracts || null;
+    }
+
+    function currentPageUrl() {
+        return window.location.href;
+    }
+
+    /**
+     * Initialize the scanner module
+     */
+    async function initScanner() {
+        try {
+            // Create scanner instance
+            if (typeof ProgressiveScanner !== 'undefined') {
+                scannerInstance = new ProgressiveScanner();
+                scanner.setScanner(scannerInstance);
+
+                // Initialize the scanner (load settings and run scan if not whitelisted)
+                await scanner.initializeScanner();
+            } else {
+                console.error('[FW Content] ProgressiveScanner not available');
+            }
+        } catch (error) {
+            console.error('[FW Content] Scanner initialization error:', error);
+        }
+    }
+
+    /**
+     * Early interceptor injection at document_start
+     */
+    async function injectInterceptorEarly() {
+        try {
+            debugLog('[FW Content] Early initialization at document_start');
+
+            if (window.StorageUtils && window.StorageUtils.ensureSettings) {
+                await window.StorageUtils.ensureSettings();
+            }
+
+            // Load whitelist first
+            if (whitelist.loadWhitelist) {
+                await whitelist.loadWhitelist();
+            }
+
+            // Check if domain is whitelisted
+            if (whitelist.isDomainWhitelisted && whitelist.isDomainWhitelisted()) {
+                debugLog('[FW Content] Domain is whitelisted - skipping interceptor injection');
+                return;
+            }
+
+            const diagnostics = window.StorageUtils && window.StorageUtils.getSetting
+                ? window.StorageUtils.getSetting('diagnostics', {})
+                : {};
+            if (!diagnostics || diagnostics.pageInterceptor !== true) {
+                debugLog('[FW Content] Page interceptor disabled; monitoring uses webRequest');
+                return;
+            }
+
+            // Diagnostic-only page wrapper. Normal monitoring does not inject it.
+            if (interceptor.injectInterceptor) {
+                const injected = interceptor.injectInterceptor(whitelist.isDomainWhitelisted);
+                if (injected) {
+                    debugLog('[FW Content] Interceptor injected at document_start');
+                }
+            }
+        } catch (error) {
+            console.error('[FW Content] Early injection error:', error);
+        }
+    }
+
+    /**
+     * Initialize message handlers
+     */
+    function initMessageHandlers() {
+        // Initialize window message listener for interceptor messages
+        if (messages.initializeMessageListener) {
+            messages.initializeMessageListener();
+        }
+
+        // Initialize browser runtime message listener for background communication
+        if (api.runtime) {
+            api.runtime.onMessage.addListener((message, sender, sendResponse) => {
+                const name = (contracts() && contracts().messageName(message)) || message.action || message.type;
+
+                if (name === 'RESCAN' || name === 'SCAN_NOW' || name === 'rescan') {
+                    if (scanner.runScan) {
+                        scanner.runScan().then(result => {
+                            const findings = Array.isArray(result) ? result : (result && result.findings) || [];
+                            const state = (result && result.state) || (scanner.getLastScanState && scanner.getLastScanState()) || 'success';
+                            sendResponse({ success: state === 'success' || state === 'truncated', state, findings });
+                        }).catch(error => {
+                            sendResponse({ success: false, state: 'failed', findings: [], error: error.message });
+                        });
+                    } else {
+                        sendResponse({ success: false, state: 'failed', findings: [], error: 'Scanner not initialized' });
+                    }
+                    return true;
+                }
+
+                if (name === 'GET_FINDINGS' || name === 'GET_LAST_RESULTS' || name === 'getCurrentFindings') {
+                    if (scanner.getLastScanResults) {
+                        const findings = scanner.getLastScanResults() || [];
+                        const state = scanner.getLastScanState ? scanner.getLastScanState() : (findings.length ? 'success' : 'pending');
+                        sendResponse({ success: true, state, findings, results: findings });
+                    } else {
+                        sendResponse({ success: false, state: 'unavailable', findings: [], error: 'Scanner not initialized' });
+                    }
+                    return false;
+                }
+
+                if (name === 'DISMISS_FINDING' || name === 'dismissFinding') {
+                    if (scanner.dismissFinding) {
+                        scanner.dismissFinding(message.id || message.value);
+                    }
+                    sendResponse({ success: true, state: 'success' });
+                    return false;
+                }
+
+                if (name === 'SETTINGS_UPDATED') {
+                    if (window.StorageUtils && window.StorageUtils.applySettings && message.data) {
+                        window.StorageUtils.applySettings(message.data);
+                    }
+                    if (whitelist.loadWhitelist) {
+                        whitelist.loadWhitelist().then(() => applyMonitoringPolicy());
+                    }
+                    sendResponse({ success: true });
+                    return false;
+                }
+
+                if (message.action === 'RESET_SEEN_CREDENTIALS') {
+                    // Reset seen credentials cache
+                    if (scanner.resetSeenCredentials) {
+                        scanner.resetSeenCredentials();
+                    }
+                    if (notifications.resetNotificationDismissed) {
+                        notifications.resetNotificationDismissed();
+                    }
+                    sendResponse({ success: true });
+                    return false;
+                }
+
+                if (message.action === 'scanUnusedEndpoints') {
+                    // Handle endpoint scanning request from background
+                    (async () => {
+                        try {
+                            // EndpointScanner is loaded in content script context
+                            if (typeof EndpointScanner === 'undefined') {
+                                sendResponse({
+                                    success: false,
+                                    error: 'EndpointScanner not loaded'
+                                });
+                                return;
+                            }
+
+                            debugLog('[FW Content] Starting endpoint scan...');
+                            const endpointScanner = new EndpointScanner();
+                            const scanResult = await endpointScanner.scanPage();
+                            debugLog(`[FW Content] Scan complete: ${scanResult.total} endpoints found`);
+
+                            sendResponse({
+                                success: true,
+                                discovered: scanResult.endpoints,
+                                total: scanResult.total,
+                                scannedAt: scanResult.scannedAt
+                            });
+                        } catch (error) {
+                            console.error('[FW Content] Endpoint scan error:', error);
+                            sendResponse({
+                                success: false,
+                                error: error.message
+                            });
+                        }
+                    })();
+                    return true; // Keep channel open for async response
+                }
+            });
+        }
+    }
+
+    /**
+     * Main initialization
+     */
+    async function initialize() {
+        debugLog('[FW Content] FerretWatch Content Script initialized');
+
+        // 1. Inject interceptor immediately (at document_start if possible)
+        await injectInterceptorEarly();
+
+        // 2. Initialize message handlers
+        initMessageHandlers();
+
+        // 3. Initialize scanner when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                initScanner().then(startDomObserver);
+            });
+        } else {
+            setTimeout(() => {
+                initScanner().then(startDomObserver);
+            }, SCANNER_INIT_DELAY);
+        }
+    }
+
+    function applyMonitoringPolicy() {
+        if (whitelist.isDomainWhitelisted && whitelist.isDomainWhitelisted()) {
+            monitoringStopped = true;
+            if (domObserver) {
+                domObserver.disconnect();
+                domObserver = null;
+            }
+            return;
+        }
+        monitoringStopped = false;
+        if (!domObserver && document.documentElement) {
+            startDomObserver();
+        }
+    }
+
+    function startDomObserver() {
+        if (monitoringStopped || domObserver || !document.documentElement) {
+            return;
+        }
+        if (whitelist.isDomainWhitelisted && whitelist.isDomainWhitelisted()) {
+            return;
+        }
+        domObserver = new MutationObserver((mutations) => {
+            if (monitoringStopped) {
+                return;
+            }
+            const chunks = [];
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType !== 1) {
+                        return;
+                    }
+                    if (node.closest && node.closest('.cyber-labs-credential-notification')) {
+                        return;
+                    }
+                    const text = node.innerText || node.textContent || '';
+                    if (text.trim()) {
+                        chunks.push(text);
+                    }
+                });
+            });
+            if (!chunks.length || !scanner.runScanText) {
+                return;
+            }
+            clearTimeout(domTimer);
+            domTimer = setTimeout(() => {
+                scanner.runScanText(chunks.join('\n'), {
+                    sourceKind: 'dom',
+                    sourceUrl: currentPageUrl()
+                });
+            }, 500);
+        });
+        domObserver.observe(document.documentElement, { childList: true, subtree: true });
+    }
+
+    // Expose scanner instance globally for backward compatibility
+    Object.defineProperty(window, 'scanner', {
+        get: function() {
+            return scannerInstance;
+        },
+        set: function(value) {
+            scannerInstance = value;
+            if (scanner.setScanner) {
+                scanner.setScanner(value);
+            }
+        }
+    });
+
+    // Start initialization
+    initialize();
+
+})();

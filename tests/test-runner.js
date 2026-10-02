@@ -35,6 +35,7 @@ class TestRunner {
             runUnit: true,
             runIntegration: true,
             runPerformance: true,
+            runLegacy: false,
             verbose: true,
             generateReport: true,
             exitOnFailure: true
@@ -51,10 +52,14 @@ class TestRunner {
             // Register unit tests
             if (this.config.runUnit) {
                 if (typeof require !== 'undefined') {
-                    const patternsTest = require('./unit/patterns.test.js');
-                    const utilsTest = require('./unit/utils.test.js');
-                    this.registerSuite('patterns', patternsTest.testFramework);
-                    this.registerSuite('utils', utilsTest.testFramework);
+                    const regression = require('./unit/regression.test.js');
+                    this.registerSuite('regression', regression.testFramework);
+                    if (this.config.runLegacy) {
+                        const patternsTest = require('./unit/patterns.test.js');
+                        const utilsTest = require('./unit/utils.test.js');
+                        this.registerSuite('patterns', patternsTest.testFramework);
+                        this.registerSuite('utils', utilsTest.testFramework);
+                    }
                 } else {
                     // Browser environment - tests should be loaded via script tags
                     if (typeof window !== 'undefined') {
@@ -67,8 +72,10 @@ class TestRunner {
             // Register integration tests
             if (this.config.runIntegration) {
                 if (typeof require !== 'undefined') {
-                    const integrationTest = require('./integration/scanning.test.js');
-                    this.registerSuite('integration', integrationTest.testFramework);
+                    if (this.config.runLegacy) {
+                        const integrationTest = require('./integration/scanning.test.js');
+                        this.registerSuite('integration', integrationTest.testFramework);
+                    }
                 } else {
                     if (typeof window !== 'undefined' && window.integrationTests) {
                         this.registerSuite('integration', window.integrationTests);
@@ -102,13 +109,15 @@ class TestRunner {
         
         try {
             const results = await testFramework.runAll();
-            
+            results.failures = results.failures || [];
+            results.executionTime = results.executionTime || 0;
+
             console.log(`\n📊 ${name.toUpperCase()} TEST RESULTS:`);
             console.log(`   Passed: ${results.passed} ✅`);
             console.log(`   Failed: ${results.failed} ❌`);
             console.log(`   Total:  ${results.total}`);
             console.log(`   Time:   ${results.executionTime}ms`);
-            
+
             if (results.failed > 0) {
                 console.log(`\n❌ Failed tests in ${name}:`);
                 results.failures.forEach(failure => {
@@ -339,7 +348,10 @@ class TestRunner {
 
     // Utility method for CI/CD integration
     getExitCode() {
-        return this.results.overall && this.results.overall.failed === 0 ? 0 : 1;
+        if (!this.results.overall) {
+            return 1;
+        }
+        return this.results.overall.failed === 0 ? 0 : 1;
     }
 }
 

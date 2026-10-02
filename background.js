@@ -3,9 +3,19 @@
  * Handles cross-tab communication, storage, and notifications
  */
 
-// Import utilities (ES modules for service workers)
-// Note: Service workers don't support dynamic imports of regular scripts
-// This would need to be adapted for actual Chrome deployment
+// Firefox loads these as background scripts. Chrome's MV3 worker loads background.js alone.
+try {
+    if (typeof importScripts === 'function' && typeof FerretWatchContracts === 'undefined') {
+        importScripts(
+            'utils/contracts.js',
+            'config/patterns.js',
+            'utils/context.js',
+            'utils/scanner.js'
+        );
+    }
+} catch (error) {
+    console.error('Failed to import background dependencies:', error);
+}
 
 class BackgroundService {
     constructor() {
@@ -14,6 +24,12 @@ class BackgroundService {
         this.settings = null;
         this.requestHeadersCache = new Map(); // Cache for capturing full headers including cookies
         this.debugMode = false; // Will be loaded from settings
+        this.findingStore = new FerretWatchContracts.FindingStore();
+        this.requestLog = new FerretWatchContracts.RequestLog();
+        this.captureBudgets = new Map();
+        this.pageUrls = new Map();
+        this.responseScanner = null;
+        this.pendingScans = 0;
 
         this.init();
     }
@@ -34,6 +50,7 @@ class BackgroundService {
         this.setupMessageListeners();
         this.setupStorageListeners();
         this.setupTabListeners();
+        this.installResponseMonitor();
 
         // Load settings (Async)
         this.loadSettings().then(() => {
@@ -45,9 +62,12 @@ class BackgroundService {
     async loadSettings() {
         try {
             const api = typeof browser !== 'undefined' ? browser : chrome;
-            const result = await api.storage.local.get(['userSettings', 'debugMode']);
-            this.settings = result.userSettings || this.getDefaultSettings();
-            this.debugMode = result.debugMode || false;
+            const result = await api.storage.local.get(['settings', 'userSettings', 'whitelistedDomains', 'debugMode']);
+            this.settings = FerretWatchContracts.migrateStoredSettings(result);
+            this.debugMode = !!this.settings.debugMode;
+            if (!result.settings) {
+                await api.storage.local.set({ settings: this.settings });
+            }
         } catch (error) {
             console.error('Failed to load settings:', error);
             this.settings = this.getDefaultSettings();
@@ -56,28 +76,7 @@ class BackgroundService {
     }
 
     getDefaultSettings() {
-        return {
-            enabledCategories: ['aws', 'github', 'api-keys', 'databases', 'certificates'],
-            riskThreshold: 'medium',
-            enableNotifications: true,
-            enableHighlighting: false,
-            enableSoundAlerts: false,
-            scanDelay: 1000,
-            trustedDomains: [],
-            cloudBucketScanning: {
-                enabled: true,
-                providers: {
-                    aws: true,
-                    gcp: true,
-                    azure: true,
-                    digitalocean: true,
-                    alibaba: true
-                },
-                testTimeout: 5000,
-                maxConcurrentTests: 3,
-                testPublicAccess: true
-            }
-        };
+        return FerretWatchContracts.defaultSettings();
     }
 
     setupMessageListeners() {
@@ -90,13 +89,58 @@ class BackgroundService {
 
 
 
+    extensionOrigin() {
+        try {
+            const api = typeof browser !== 'undefined' ? browser : chrome;
+            return api.runtime.getURL('');
+        } catch (error) {
+            return '';
+        }
+    }
+
+    isExtensionSender(sender) {
+        return FerretWatchContracts.isExtensionSender(sender, this.extensionOrigin());
+    }
+
+    authorizedTab(message, sender) {
+        return FerretWatchContracts.authorizedTabId(message, sender, this.extensionOrigin());
+    }
+
     async handleMessage(message, sender, sendResponse) {
         try {
+            const tabId = this.authorizedTab(message, sender);
+            const extensionPage = this.isExtensionSender(sender);
             switch (message.type) {
                 case 'SCAN_COMPLETE':
-                    await this.handleScanComplete(message.data, sender.tab?.id);
-                    sendResponse({ success: true });
+                case 'SCAN_REPORT':
+                    sendResponse(await this.handleScanReport(message.data, sender.tab?.id));
                     break;
+
+                case 'GET_FINDINGS':
+                case 'EXPORT_FINDINGS': {
+                    if (tabId == null) {
+                        sendResponse({ state: 'unavailable', findings: [], exportFindings: [], error: 'Tab not authorized' });
+                        break;
+                    }
+                    sendResponse({
+                        state: this.findingStore.state(tabId),
+                        findings: this.findingStore.list(tabId, false),
+                        exportFindings: extensionPage ? this.findingStore.list(tabId, true) : []
+                    });
+                    break;
+                }
+
+                case 'DISMISS_FINDING': {
+                    if (tabId == null) {
+                        sendResponse({ success: false, state: 'unavailable', findings: [], error: 'Tab not authorized' });
+                        break;
+                    }
+                    const dismissed = this.findingStore.dismiss(tabId, message.id);
+                    const active = this.findingStore.list(tabId, false);
+                    await this.updateBadge(tabId, active.length);
+                    sendResponse({ success: dismissed, state: this.findingStore.state(tabId), findings: active });
+                    break;
+                }
 
                 case 'GET_SETTINGS':
                     sendResponse({ settings: this.settings });
@@ -107,10 +151,15 @@ class BackgroundService {
                     sendResponse({ success: true });
                     break;
 
-                case 'GET_TAB_RESULTS':
-                    const results = this.tabResults.get(sender.tab?.id) || [];
-                    sendResponse({ results });
+                case 'GET_TAB_RESULTS': {
+                    if (tabId == null) {
+                        sendResponse({ results: [], state: 'unavailable', error: 'Tab not authorized' });
+                        break;
+                    }
+                    const results = this.findingStore.list(tabId, false);
+                    sendResponse({ results, state: this.findingStore.state(tabId) });
                     break;
+                }
 
                 case 'CLEAR_TAB_RESULTS':
                     this.tabResults.delete(sender.tab?.id);
@@ -118,6 +167,10 @@ class BackgroundService {
                     break;
 
                 case 'EXPORT_SESSION_DATA':
+                    if (!extensionPage) {
+                        sendResponse({ error: 'Export is only available from the extension' });
+                        break;
+                    }
                     const sessionData = await this.getSessionData();
                     sendResponse({ data: sessionData });
                     break;
@@ -138,27 +191,38 @@ class BackgroundService {
                     break;
 
                 case 'REPLAY_REQUEST':
-                    this.replayRequest(message.data).then(sendResponse);
-                    return true;
-
                 case 'PROXY_REQUEST':
-                    // Must return true to keep channel open for async fetch
-                    this.handleProxyRequest(message.data, message.tabId).then(sendResponse);
+                    if (tabId == null) {
+                        sendResponse({ success: false, error: 'Replay requires the source tab. Refusing to use another tab.' });
+                        break;
+                    }
+                    this.replayRequest({ ...(message.data || {}), sourceTabId: tabId, tabId }).then(sendResponse);
                     return true;
-
 
                 case 'GET_API_ENDPOINTS':
-                    const endpoints = this.apiEndpoints.get(message.tabId) || [];
+                    if (tabId == null) {
+                        sendResponse({ endpoints: [], error: 'Tab not authorized' });
+                        break;
+                    }
+                    const endpoints = this.apiEndpoints.get(tabId) || [];
                     sendResponse({ endpoints });
                     break;
 
                 case 'CLEAR_API_ENDPOINTS':
-                    this.apiEndpoints.set(message.tabId, []);
+                    if (tabId == null) {
+                        sendResponse({ success: false, error: 'Tab not authorized' });
+                        break;
+                    }
+                    this.apiEndpoints.set(tabId, []);
                     sendResponse({ success: true });
                     break;
 
                 case 'SCAN_UNUSED_ENDPOINTS':
-                    this.handleUnusedEndpointScan(message.tabId, sender.tab?.id).then(sendResponse);
+                    if (tabId == null) {
+                        sendResponse({ success: false, error: 'Tab not authorized' });
+                        break;
+                    }
+                    this.handleUnusedEndpointScan(tabId, sender.tab?.id).then(sendResponse);
                     return true;
 
                 default:
@@ -171,32 +235,59 @@ class BackgroundService {
         }
     }
 
-    async handleScanComplete(scanData, tabId) {
-        if (!tabId) return;
-
-        // Store results for this tab
-        const existingResults = this.tabResults.get(tabId) || [];
-        const newResults = [...existingResults, ...scanData.findings];
-        this.tabResults.set(tabId, newResults);
-
-        // Show notifications for high-risk findings
-        if (this.settings.enableNotifications) {
-            const highRiskFindings = scanData.findings.filter(
-                f => f.riskLevel === 'critical' || f.riskLevel === 'high'
-            );
-
-            if (highRiskFindings.length > 0) {
+    async handleScanReport(scanData, tabId) {
+        if (!tabId || !scanData) {
+            return { accepted: false, state: 'unavailable', findings: [] };
+        }
+        const currentUrl = this.pageUrls.get(tabId);
+        if (scanData.pageUrl && currentUrl && scanData.pageUrl !== currentUrl) {
+            return { accepted: false, reason: 'stale', state: this.findingStore.state(tabId), findings: this.findingStore.list(tabId, false) };
+        }
+        const generation = this.findingStore.generation(tabId);
+        const report = this.findingStore.report(tabId, generation, scanData.findings || [], scanData.state || 'success');
+        this.tabResults.set(tabId, report.findings);
+        if (report.accepted && this.settings && (this.settings.enableNotifications || this.settings.showNotifications)) {
+            const fresh = (scanData.findings || []).filter((finding) => report.added.includes(finding.id || FerretWatchContracts.findingId(finding)));
+            const credentials = fresh.filter((finding) => finding.category !== 'cloudStorage' && (finding.riskLevel === 'critical' || finding.riskLevel === 'high'));
+            if (credentials.length > 0) {
                 await this.showNotification({
                     type: 'credential_detected',
-                    title: '🚨 Credentials Detected',
-                    message: `Found ${highRiskFindings.length} high-risk credential(s)`,
-                    findings: highRiskFindings
+                    title: 'Credentials detected',
+                    message: `Found ${credentials.length} high-risk credential(s)`,
+                    findings: credentials
                 });
             }
         }
+        await this.updateBadge(tabId, report.findings.length);
+        return report;
+    }
 
-        // Update badge with finding count
-        await this.updateBadge(tabId, newResults.length);
+    async handleScanComplete(scanData, tabId) {
+        return this.handleScanReport(scanData, tabId);
+    }
+
+    budgetFor(tabId) {
+        if (!this.captureBudgets.has(tabId)) {
+            this.captureBudgets.set(tabId, new FerretWatchContracts.CaptureBudget());
+        }
+        return this.captureBudgets.get(tabId);
+    }
+
+    isWhitelistedUrl(url) {
+        try {
+            const host = new URL(url).hostname;
+            return FerretWatchContracts.hostMatchesWhitelist(host, (this.settings && this.settings.whitelistedDomains) || []);
+        } catch (error) {
+            return false;
+        }
+    }
+
+    monitoringEnabled() {
+        const diagnostics = this.settings && this.settings.diagnostics;
+        if (!diagnostics) {
+            return true;
+        }
+        return diagnostics.monitoring !== false && diagnostics.responseFilter !== false;
     }
 
     handleApiCall(apiData, tabId, tabUrl) {
@@ -220,12 +311,21 @@ class BackgroundService {
 
         // Check if we already have this endpoint (deduplication)
         // We consider an endpoint unique by Method + URL
-        const exists = currentEndpoints.some(e => e.method === apiData.method && e.url === apiData.url);
+        const normalized = FerretWatchContracts.normalizeRequestUrl(apiData.url, apiData.origin || tabUrl) || apiData.url;
+        apiData.url = normalized;
+        apiData.method = String(apiData.method || 'GET').toUpperCase();
+        if (apiData.body) {
+            const bounded = FerretWatchContracts.boundText(apiData.body, FerretWatchContracts.CAPTURE_LIMITS.requestBodyBytes);
+            apiData.body = bounded.text;
+            apiData.bodyTruncated = bounded.truncated;
+        }
+
+        const exists = false;
 
         if (!exists) {
             // Try to get full headers from cache (including cookies)
-            const cacheKey = `${apiData.method}:${apiData.url}`;
-            const cachedHeaders = this.requestHeadersCache.get(cacheKey);
+            const cacheKey = apiData.requestId ? String(apiData.requestId) : `${apiData.method}:${apiData.url}`;
+            const cachedHeaders = this.requestHeadersCache.get(cacheKey) || this.requestHeadersCache.get(`${apiData.method}:${apiData.url}`);
 
 // debugLog(`🔍 [API] Looking for cached headers: ${cacheKey}`);
 // debugLog(`🔍 [API] Cache has entry: ${!!cachedHeaders}`);
@@ -249,8 +349,23 @@ class BackgroundService {
 
             // Mark as live request with source
             apiData.source = 'live';
-            apiData.response = null; // Will be filled when response arrives
+            apiData.response = null;
 
+            if (!this.budgetFor(tabId).tryEndpoint()) {
+                apiData.omitted = true;
+                return;
+            }
+            if (apiData.requestId) {
+                this.requestLog.observe({
+                    requestId: apiData.requestId,
+                    tabId,
+                    generation: this.findingStore.generation(tabId),
+                    method: apiData.method,
+                    url: apiData.url,
+                    headers: apiData.headers,
+                    body: apiData.body
+                });
+            }
             currentEndpoints.push(apiData);
             this.apiEndpoints.set(tabId, currentEndpoints);
 
@@ -273,9 +388,11 @@ class BackgroundService {
         const currentEndpoints = this.apiEndpoints.get(tabId) || [];
 
         // Find the matching request
-        const endpoint = currentEndpoints.find(e =>
-            e.method === responseData.method && e.url === responseData.url
-        );
+        const normalizedUrl = FerretWatchContracts.normalizeRequestUrl(responseData.url, this.pageUrls.get(tabId)) || responseData.url;
+        responseData.url = normalizedUrl;
+        responseData.method = String(responseData.method || 'GET').toUpperCase();
+        const endpoint = (responseData.requestId && currentEndpoints.find(e => e.requestId === responseData.requestId)) ||
+            currentEndpoints.find(e => e.method === responseData.method && e.url === responseData.url && !e.response);
 
         if (endpoint) {
             // Update endpoint with response data
@@ -294,8 +411,7 @@ class BackgroundService {
 
             // Notify explorer tabs
             this.notifyExplorerTabs(tabId, endpoint);
-
-// debugLog(`✅ [API] Updated endpoint with response data`);
+            this.scanResponsePayload(tabId, responseData);
         } else {
             console.warn(`⚠️ [API] No matching request found for response: ${responseData.method} ${responseData.url}`);
 
@@ -322,7 +438,26 @@ class BackgroundService {
             currentEndpoints.push(newEndpoint);
             this.apiEndpoints.set(tabId, currentEndpoints);
             this.notifyExplorerTabs(tabId, newEndpoint);
+            this.scanResponsePayload(tabId, responseData);
         }
+    }
+
+    scanResponsePayload(tabId, responseData) {
+        const api = typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null);
+        if (this.monitoringEnabled() && api && api.webRequest && typeof api.webRequest.filterResponseData === 'function') {
+            return;
+        }
+        if (!responseData || responseData.inspection === 'unavailable' || !responseData.responseBody) {
+            return;
+        }
+        if (this.isWhitelistedUrl(responseData.url)) {
+            return;
+        }
+        const bounded = FerretWatchContracts.boundText(responseData.responseBody, FerretWatchContracts.CAPTURE_LIMITS.bytesPerResponse);
+        this.scanCapturedText(tabId, this.pageUrls.get(tabId), bounded.text, {
+            url: responseData.url,
+            sourceKind: 'response'
+        });
     }
 
     /**
@@ -335,19 +470,19 @@ class BackgroundService {
 
         const startTime = Date.now();
 
+        const sourceTabId = requestData.sourceTabId || requestData.tabId;
+        if (sourceTabId == null) {
+            return { success: false, error: 'Replay requires the source tab. Refusing to use another tab.' };
+        }
         try {
-            // Resolve relative URLs to absolute using the origin
-            let absoluteUrl = requestData.url;
-            if (requestData.origin && !requestData.url.startsWith('http://') && !requestData.url.startsWith('https://')) {
-                try {
-                    absoluteUrl = new URL(requestData.url, requestData.origin).href;
-// debugLog(`[API] Resolved relative URL: ${requestData.url} -> ${absoluteUrl}`);
-                } catch (e) {
-                    console.warn('[API] Could not resolve relative URL:', requestData.url, e);
-                }
-            } else if (!requestData.url.startsWith('http://') && !requestData.url.startsWith('https://')) {
-                console.warn(`[API] ⚠️ Relative URL detected but NO ORIGIN SET: ${requestData.url}`);
-                console.warn(`[API] This will cause a NetworkError. Origin should have been stored when request was captured.`);
+            const api = typeof browser !== 'undefined' ? browser : chrome;
+            const sourceTab = await api.tabs.get(sourceTabId);
+            if (!sourceTab || !sourceTab.url) {
+                return { success: false, error: 'Source tab is closed or unavailable.' };
+            }
+            let absoluteUrl = FerretWatchContracts.normalizeRequestUrl(requestData.url, requestData.origin || sourceTab.url);
+            if (!absoluteUrl) {
+                return { success: false, error: 'Could not resolve the replay URL.' };
             }
 
 // debugLog(`[API] Final URL to fetch: ${absoluteUrl}`);
@@ -397,8 +532,8 @@ class BackgroundService {
      * @param {string} url - Request URL
      * @param {Object} headers - Headers object from webRequest
      */
-    cacheRequestHeaders(method, url, headers) {
-        const cacheKey = `${method}:${url}`;
+    cacheRequestHeaders(method, url, headers, requestId) {
+        const cacheKey = requestId ? String(requestId) : `${method}:${url}`;
 
         // Convert headers array to object
         const headersObj = {};
@@ -550,128 +685,24 @@ class BackgroundService {
     }
 
     async handleProxyRequest(requestData, specifiedTabId) {
-        try {
-// debugLog('🔄 [Background] Forwarding proxy request to Content Script');
-// debugLog('🔄 [Background] Request data:', requestData);
-// debugLog('🔄 [Background] Target tab ID:', specifiedTabId);
-            const api = typeof browser !== 'undefined' ? browser : chrome;
-
-            let activeTab;
-
-            if (specifiedTabId) {
-                try {
-                    activeTab = await api.tabs.get(specifiedTabId);
-// debugLog('✅ [Background] Found specified tab:', activeTab.id, activeTab.url);
-                } catch (e) {
-                    console.warn(`⚠️ [Background] Specified tab ${specifiedTabId} not found:`, e.message);
-                }
-            }
-
-            if (!activeTab) {
-                // Find the active tab to execute the request in
-                const tabs = await api.tabs.query({ active: true, currentWindow: true });
-                if (!tabs || tabs.length === 0) {
-                    console.error('❌ [Background] No active tab found');
-                    throw new Error('No active tab found to execute request');
-                }
-                activeTab = tabs[0];
-// debugLog('📍 [Background] Using active tab:', activeTab.id, activeTab.url);
-            }
-
-// debugLog(`🎯 [Background] Target Tab: ID=${activeTab.id}, URL=${activeTab.url}`);
-
-            // Check if URL is restricted (no content script)
-            if (activeTab.url.startsWith('chrome://') || activeTab.url.startsWith('edge://') || activeTab.url.startsWith('about:') || activeTab.url.startsWith('moz-extension://')) {
-                console.warn('⚠️ [Background] Target tab is a restricted page. Content script likely missing.');
-                throw new Error('Cannot inject content script into restricted page');
-            }
-
-            // Helper to send message
-            const sendMessageToTab = async () => {
-// debugLog('📤 [Background] Sending executeRequest to tab', activeTab.id);
-                const response = await api.tabs.sendMessage(activeTab.id, {
-                    action: 'executeRequest',
-                    data: requestData
-                });
-// debugLog('📥 [Background] Received response from content script:', response);
-                return response;
-            };
-
-            try {
-                // Try sending message first
-                const result = await sendMessageToTab();
-// debugLog('✅ [Background] Proxy request successful');
-                return result;
-            } catch (error) {
-                console.error('❌ [Background] sendMessage failed:', error.message);
-
-                // Check if error is "Receiving end does not exist" or similar
-                const isConnectionError = error.message.includes('Receiving end does not exist') ||
-                    error.message.includes('Could not establish connection');
-
-                if (isConnectionError && !activeTab.url.startsWith('about:') && !activeTab.url.startsWith('chrome')) {
-// debugLog('⚠️ [Background] Content script disconnected. Attempting lazy injection...');
-
-                    // Inject script dependencies in order
-                    const scripts = [
-                        "config/patterns.js",
-                        "utils/storage.js",
-                        "utils/context.js",
-                        "utils/bucket-parser.js",
-                        "utils/bucket-tester.js",
-                        "utils/settings.js",
-                        "utils/scanner.js",
-                        "content.js"
-                    ];
-
-                    for (const file of scripts) {
-                        try {
-// debugLog(`💉 [Background] Injecting ${file}...`);
-                            if (api.scripting) {
-                                await api.scripting.executeScript({
-                                    target: { tabId: activeTab.id },
-                                    files: [file]
-                                });
-                            } else {
-                                // MV2 fallback
-                                await api.tabs.executeScript(activeTab.id, { file: file });
-                            }
-                        } catch (injectError) {
-                            console.error(`❌ [Background] Failed to inject ${file}:`, injectError);
-                        }
-                    }
-
-                    // Wait a moment for script to init
-                    await new Promise(r => setTimeout(r, 500));
-
-// debugLog('🔄 [Background] Retrying proxy request after injection...');
-                    const result = await sendMessageToTab();
-// debugLog('✅ [Background] Retry successful');
-                    return result;
-
-                } else {
-                    throw error;
-                }
-            }
-
-        } catch (error) {
-            console.error('❌ [Background] Proxy forwarding failed:', error);
-            return {
-                success: false,
-                error: `Proxy Error: ${error.message}`
-            };
+        const tabId = specifiedTabId || (requestData && (requestData.sourceTabId || requestData.tabId));
+        if (tabId == null) {
+            return { success: false, error: 'Replay requires the source tab. Refusing to use another tab.' };
         }
+        return this.replayRequest({ ...(requestData || {}), sourceTabId: tabId, tabId });
     }
 
 
     async updateSettings(newSettings) {
 
         // Validate settings before updating
-        const validatedSettings = this.validateSettings(newSettings);
-        this.settings = { ...this.settings, ...validatedSettings };
+        const validatedSettings = FerretWatchContracts.migrateStoredSettings({
+            settings: { ...this.settings, ...this.validateSettings(newSettings) }
+        });
+        this.settings = validatedSettings;
 
         try {
-            await chrome.storage.local.set({ userSettings: this.settings });
+            await chrome.storage.local.set({ settings: this.settings });
 
             // Broadcast settings update to all tabs
             const tabs = await chrome.tabs.query({});
@@ -785,8 +816,8 @@ class BackgroundService {
 
     setupStorageListeners() {
         chrome.storage.onChanged.addListener((changes, namespace) => {
-            if (namespace === 'local' && changes.userSettings) {
-                this.settings = changes.userSettings.newValue;
+            if (namespace === 'local' && changes.settings) {
+                this.settings = FerretWatchContracts.migrateStoredSettings({ settings: changes.settings.newValue });
 // debugLog('Settings updated from storage');
             }
         });
@@ -797,17 +828,27 @@ class BackgroundService {
         chrome.tabs.onRemoved.addListener((tabId) => {
             this.tabResults.delete(tabId);
             this.apiEndpoints.delete(tabId);
+            this.findingStore.close(tabId);
+            this.requestLog.dropTab(tabId);
+            this.captureBudgets.delete(tabId);
+            this.pageUrls.delete(tabId);
         });
 
-
-        // Clear badge when tab is updated (navigation)
-        chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+        chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+            if (changeInfo.url || changeInfo.status === 'loading') {
+                if (tab && tab.url) {
+                    this.pageUrls.set(tabId, tab.url);
+                }
+            }
             if (changeInfo.status === 'loading') {
                 this.tabResults.delete(tabId);
-                this.apiEndpoints.delete(tabId);
+                this.apiEndpoints.set(tabId, []);
+                this.findingStore.beginDocument(tabId);
+                this.requestLog.dropTab(tabId);
+                const budget = this.budgetFor(tabId);
+                budget.reset();
                 this.updateBadge(tabId, 0);
             }
-
         });
     }
 
@@ -839,6 +880,119 @@ class BackgroundService {
             settings: this.settings,
             tabs: sessionResults
         };
+    }
+
+    headerContentType(headers) {
+        if (!Array.isArray(headers)) {
+            return '';
+        }
+        const header = headers.find((item) => item.name && item.name.toLowerCase() === 'content-type');
+        return header ? header.value : '';
+    }
+
+    async scanCapturedText(tabId, pageUrl, text, meta) {
+        if (!text || tabId == null || tabId < 0) {
+            return;
+        }
+        if (this.pendingScans >= FerretWatchContracts.CAPTURE_LIMITS.pendingScans) {
+            return;
+        }
+        const budget = this.budgetFor(tabId);
+        const retained = budget.retain(text);
+        if (!retained.text) {
+            return;
+        }
+        if (typeof ProgressiveScanner === 'undefined' || typeof patternManager === 'undefined') {
+            return;
+        }
+        this.pendingScans += 1;
+        try {
+            if (!this.responseScanner) {
+                this.responseScanner = new ProgressiveScanner();
+            }
+            const findings = await this.responseScanner.progressiveScan(retained.text, patternManager.getAllPatterns(), {
+                sourceKind: meta.sourceKind || 'response',
+                sourceUrl: meta.url,
+                skipBucketProbes: true,
+                scanTimeMs: FerretWatchContracts.CAPTURE_LIMITS.scanTimeMs
+            });
+            const state = retained.state === 'truncated' || this.responseScanner.lastScanState === 'truncated'
+                ? 'truncated'
+                : (this.responseScanner.lastScanState || 'success');
+            await this.handleScanReport({
+                pageUrl: pageUrl || meta.url,
+                findings,
+                state
+            }, tabId);
+        } catch (error) {
+            console.debug('Response scan failed:', error.message);
+        } finally {
+            this.pendingScans -= 1;
+        }
+    }
+
+    installResponseMonitor() {
+        const api = typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null);
+        const webRequest = api && (api.webRequest || null);
+        if (!webRequest || typeof webRequest.filterResponseData !== 'function' || !webRequest.onHeadersReceived) {
+            console.debug('Response filter API is unavailable in this browser. Document HTML and scripts are still scanned in the page.');
+            return;
+        }
+        const watched = new Set(['xmlhttprequest', 'fetch', 'script']);
+        webRequest.onHeadersReceived.addListener((details) => {
+            try {
+                if (!this.monitoringEnabled() || !watched.has(details.type)) {
+                    return;
+                }
+                if (details.tabId < 0 || this.isWhitelistedUrl(details.url)) {
+                    return;
+                }
+                const contentType = this.headerContentType(details.responseHeaders);
+                if (!FerretWatchContracts.isScannableContentType(contentType)) {
+                    return;
+                }
+                const filter = webRequest.filterResponseData(details.requestId);
+                const tap = new FerretWatchContracts.ResponseTap({
+                    byteLimit: FerretWatchContracts.CAPTURE_LIMITS.bytesPerResponse,
+                    contentType
+                });
+                let wrote = false;
+                filter.ondata = (event) => {
+                    try {
+                        filter.write(event.data);
+                        wrote = true;
+                        tap.write(event.data);
+                    } catch (error) {
+                        try { filter.disconnect(); } catch (disconnectError) { /* already closed */ }
+                    }
+                };
+                filter.onstop = () => {
+                    try {
+                        if (wrote) {
+                            filter.close();
+                        } else {
+                            filter.disconnect();
+                        }
+                    } catch (error) {
+                        try { filter.disconnect(); } catch (disconnectError) { /* already closed */ }
+                    }
+                    const snapshot = tap.finish();
+                    const pageUrl = this.pageUrls.get(details.tabId);
+                    setTimeout(() => {
+                        this.scanCapturedText(details.tabId, pageUrl, snapshot.text, {
+                            url: details.url,
+                            sourceKind: details.type === 'script' ? 'script' : 'response'
+                        });
+                    }, 0);
+                };
+                filter.onerror = () => {
+                    tap.fail();
+                    try { filter.disconnect(); } catch (error) { /* already closed */ }
+                };
+            } catch (error) {
+                console.debug('Could not attach response filter:', error.message);
+            }
+        }, { urls: ['<all_urls>'] }, ['responseHeaders']);
     }
 }
 
@@ -936,7 +1090,7 @@ self.activeProxyTargets = activeProxyTargets;
                     }
 
                     // Skip non-XHR/Fetch requests (only capture API calls)
-                    if (details.type !== 'xmlhttprequest' && details.type !== 'fetch' && details.type !== 'other') {
+                    if (details.type !== 'xmlhttprequest' && details.type !== 'fetch' && details.type !== 'other' && details.type !== 'script') {
 // debugLog(`⏭️ [HEADERS] Skipping non-API request type: ${details.type} for ${details.url}`);
                         return;
                     }
@@ -949,7 +1103,17 @@ self.activeProxyTargets = activeProxyTargets;
 
                     // Cache the full headers for this request
                     if (backgroundService && backgroundService.cacheRequestHeaders) {
-                        backgroundService.cacheRequestHeaders(details.method, details.url, details.requestHeaders);
+                        backgroundService.cacheRequestHeaders(details.method, details.url, details.requestHeaders, details.requestId);
+                        if (backgroundService.requestLog && !backgroundService.isWhitelistedUrl(details.url)) {
+                            backgroundService.requestLog.observe({
+                                requestId: details.requestId,
+                                tabId: details.tabId,
+                                generation: backgroundService.findingStore.generation(details.tabId),
+                                method: details.method,
+                                url: details.url,
+                                headers: details.requestHeaders
+                            });
+                        }
 // debugLog(`📦 [HEADERS] Cached headers for ${details.method} ${details.url}`);
                     } else {
                         console.warn(`⚠️ [HEADERS] backgroundService not available!`);

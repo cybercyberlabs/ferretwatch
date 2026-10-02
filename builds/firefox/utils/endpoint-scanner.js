@@ -339,7 +339,8 @@ class EndpointScanner {
                             scriptOrigin = scriptUrlObj.origin;
                             baseUrl = scriptOrigin;
                         } catch (e) {
-                            // Invalid script URL, use current origin
+                            // Invalid script URL format - use current origin as fallback
+                            console.debug('Invalid script URL, using current origin:', metadata.scriptUrl);
                         }
                     }
 

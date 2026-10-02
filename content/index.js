@@ -32,24 +32,17 @@
 
     // Global state
     let scannerInstance = null;
+    let domObserver = null;
+    let domTimer = null;
+    let monitoringStopped = false;
 
-    /**
-     * False positive validation function
-     * Exposed globally for the ProgressiveScanner
-     */
-    window.isValidSecret = function(match, patternConfig) {
-        if (!match) return false;
+    function contracts() {
+        return window.FerretWatchContracts || null;
+    }
 
-        // Use the patterns from config/patterns.js
-        if (window.FALSE_POSITIVE_PATTERNS) {
-            for (const fpPattern of window.FALSE_POSITIVE_PATTERNS) {
-                if (fpPattern.test(match)) {
-                    return false; // It's a false positive
-                }
-            }
-        }
-        return true; // Likely a valid secret
-    };
+    function currentPageUrl() {
+        return window.location.href;
+    }
 
     /**
      * Initialize the scanner module
@@ -78,6 +71,10 @@
         try {
             debugLog('[FW Content] Early initialization at document_start');
 
+            if (window.StorageUtils && window.StorageUtils.ensureSettings) {
+                await window.StorageUtils.ensureSettings();
+            }
+
             // Load whitelist first
             if (whitelist.loadWhitelist) {
                 await whitelist.loadWhitelist();
@@ -89,7 +86,15 @@
                 return;
             }
 
-            // Inject interceptor before any page scripts can run
+            const diagnostics = window.StorageUtils && window.StorageUtils.getSetting
+                ? window.StorageUtils.getSetting('diagnostics', {})
+                : {};
+            if (!diagnostics || diagnostics.pageInterceptor !== true) {
+                debugLog('[FW Content] Page interceptor disabled; monitoring uses webRequest');
+                return;
+            }
+
+            // Diagnostic-only page wrapper. Normal monitoring does not inject it.
             if (interceptor.injectInterceptor) {
                 const injected = interceptor.injectInterceptor(whitelist.isDomainWhitelisted);
                 if (injected) {
@@ -113,27 +118,50 @@
         // Initialize browser runtime message listener for background communication
         if (api.runtime) {
             api.runtime.onMessage.addListener((message, sender, sendResponse) => {
-                if (message.action === 'SCAN_NOW') {
-                    // Handle manual scan request from popup
+                const name = (contracts() && contracts().messageName(message)) || message.action || message.type;
+
+                if (name === 'RESCAN' || name === 'SCAN_NOW' || name === 'rescan') {
                     if (scanner.runScan) {
-                        scanner.runScan().then(findings => {
-                            sendResponse({ success: true, findings: findings });
+                        scanner.runScan().then(result => {
+                            const findings = Array.isArray(result) ? result : (result && result.findings) || [];
+                            const state = (result && result.state) || (scanner.getLastScanState && scanner.getLastScanState()) || 'success';
+                            sendResponse({ success: state === 'success' || state === 'truncated', state, findings });
                         }).catch(error => {
-                            sendResponse({ success: false, error: error.message });
+                            sendResponse({ success: false, state: 'failed', findings: [], error: error.message });
                         });
                     } else {
-                        sendResponse({ success: false, error: 'Scanner not initialized' });
+                        sendResponse({ success: false, state: 'failed', findings: [], error: 'Scanner not initialized' });
                     }
-                    return true; // Keep channel open for async response
+                    return true;
                 }
 
-                if (message.action === 'GET_LAST_RESULTS') {
-                    // Return last scan results
+                if (name === 'GET_FINDINGS' || name === 'GET_LAST_RESULTS' || name === 'getCurrentFindings') {
                     if (scanner.getLastScanResults) {
-                        sendResponse({ success: true, results: scanner.getLastScanResults() });
+                        const findings = scanner.getLastScanResults() || [];
+                        const state = scanner.getLastScanState ? scanner.getLastScanState() : (findings.length ? 'success' : 'pending');
+                        sendResponse({ success: true, state, findings, results: findings });
                     } else {
-                        sendResponse({ success: false, error: 'Scanner not initialized' });
+                        sendResponse({ success: false, state: 'unavailable', findings: [], error: 'Scanner not initialized' });
                     }
+                    return false;
+                }
+
+                if (name === 'DISMISS_FINDING' || name === 'dismissFinding') {
+                    if (scanner.dismissFinding) {
+                        scanner.dismissFinding(message.id || message.value);
+                    }
+                    sendResponse({ success: true, state: 'success' });
+                    return false;
+                }
+
+                if (name === 'SETTINGS_UPDATED') {
+                    if (window.StorageUtils && window.StorageUtils.applySettings && message.data) {
+                        window.StorageUtils.applySettings(message.data);
+                    }
+                    if (whitelist.loadWhitelist) {
+                        whitelist.loadWhitelist().then(() => applyMonitoringPolicy());
+                    }
+                    sendResponse({ success: true });
                     return false;
                 }
 
@@ -201,11 +229,69 @@
 
         // 3. Initialize scanner when DOM is ready
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initScanner);
+            document.addEventListener('DOMContentLoaded', () => {
+                initScanner().then(startDomObserver);
+            });
         } else {
-            // DOM already loaded, delay slightly to ensure page is ready
-            setTimeout(initScanner, SCANNER_INIT_DELAY);
+            setTimeout(() => {
+                initScanner().then(startDomObserver);
+            }, SCANNER_INIT_DELAY);
         }
+    }
+
+    function applyMonitoringPolicy() {
+        if (whitelist.isDomainWhitelisted && whitelist.isDomainWhitelisted()) {
+            monitoringStopped = true;
+            if (domObserver) {
+                domObserver.disconnect();
+                domObserver = null;
+            }
+            return;
+        }
+        monitoringStopped = false;
+        if (!domObserver && document.documentElement) {
+            startDomObserver();
+        }
+    }
+
+    function startDomObserver() {
+        if (monitoringStopped || domObserver || !document.documentElement) {
+            return;
+        }
+        if (whitelist.isDomainWhitelisted && whitelist.isDomainWhitelisted()) {
+            return;
+        }
+        domObserver = new MutationObserver((mutations) => {
+            if (monitoringStopped) {
+                return;
+            }
+            const chunks = [];
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType !== 1) {
+                        return;
+                    }
+                    if (node.closest && node.closest('.cyber-labs-credential-notification')) {
+                        return;
+                    }
+                    const text = node.innerText || node.textContent || '';
+                    if (text.trim()) {
+                        chunks.push(text);
+                    }
+                });
+            });
+            if (!chunks.length || !scanner.runScanText) {
+                return;
+            }
+            clearTimeout(domTimer);
+            domTimer = setTimeout(() => {
+                scanner.runScanText(chunks.join('\n'), {
+                    sourceKind: 'dom',
+                    sourceUrl: currentPageUrl()
+                });
+            }, 500);
+        });
+        domObserver.observe(document.documentElement, { childList: true, subtree: true });
     }
 
     // Expose scanner instance globally for backward compatibility
