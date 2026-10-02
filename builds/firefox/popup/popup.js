@@ -36,8 +36,6 @@ async function initializePopup() {
         // Load and display current findings
         await loadCurrentFindings();
 
-        // Update status
-        updateStatus('active', 'Scanner ready');
 
     } catch (error) {
         console.error('❌ Popup initialization error:', error);
@@ -171,8 +169,9 @@ async function handleRescan() {
             console.log('📨 Rescan response:', response);
             const state = response && response.state;
             const findings = response && Array.isArray(response.findings) ? response.findings : [];
+            displayFindings(findings);
             if (state === 'unavailable' || state === 'failed') {
-                updateStatus('error', state === 'failed' ? 'Scan failed' : 'Scan unavailable on this page');
+                updateStatus('error', state === 'failed' ? 'Scan failed' : 'Some scan sources unavailable');
             } else if (state === 'pending') {
                 updateStatus('active', 'Scan still running');
             } else if (state === 'skipped') {
@@ -560,7 +559,7 @@ async function exportData(format) {
             console.log('⚠️ Export completed with no findings. File created for debugging.');
         }
 
-        setTimeout(() => updateStatus('active', 'Scanner ready'), 3000);
+        setTimeout(() => loadCurrentFindings(), 3000);
 
     } catch (error) {
         console.error('❌ Export error:', error);
@@ -968,8 +967,8 @@ async function loadCurrentFindings() {
         const state = response && response.state;
         const findings = response && Array.isArray(response.findings) ? response.findings : [];
         if (state === 'unavailable') {
-            updateStatus('error', 'Scan unavailable on this page');
-            displayFindings([]);
+            updateStatus('warning', 'Some scan sources unavailable');
+            displayFindings(findings);
         } else if (state === 'pending') {
             updateStatus('active', 'Scan still running');
             displayFindings(findings);

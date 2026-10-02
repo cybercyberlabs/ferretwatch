@@ -63,6 +63,8 @@
 
     // Scanner state
     let scanner = null;
+    let documentContext = null;
+    let activeScans = 0;
     let lastScanResults = [];
     let lastScanState = 'pending';
     let seenCredentials = new Set();
@@ -86,14 +88,6 @@
             if (window.StorageUtils && window.StorageUtils.ensureSettings) {
                 const unified = await window.StorageUtils.ensureSettings();
                 settingsCache = { ...settingsCache, ...unified };
-            }
-            const result = await api.storage.local.get(['settings', 'debugMode']);
-            if (result.settings) {
-                settingsCache = { ...settingsCache, ...result.settings };
-            }
-            // Load debug mode setting separately
-            if (result.debugMode !== undefined) {
-                settingsCache.debugMode = result.debugMode;
             }
             debugLog('Settings loaded:', settingsCache);
         } catch (error) {
@@ -239,84 +233,67 @@
         return allPatterns;
     }
 
-    function reportScan(findings, state) {
-        const visible = findings.filter((finding) => !dismissedIds.has(finding.id));
-        lastScanResults = visible;
-        lastScanState = state;
-        window.lastScanResults = visible;
-        if (!api.runtime) {
-            return;
-        }
-        api.runtime.sendMessage({
-            type: 'SCAN_REPORT',
-            data: {
-                pageUrl: window.location.href,
-                findings,
-                state
-            }
-        }).catch(() => {});
+    function setDocumentContext(context) {
+        documentContext = context;
+        lastScanResults = [];
+        lastScanState = 'pending';
+        window.lastScanResults = [];
     }
 
-    async function runScan() {
-        if (isDomainWhitelisted()) {
-            lastScanState = 'skipped';
-            lastScanResults = [];
-            reportScan([], 'skipped');
-            return { state: 'skipped', findings: [] };
-        }
-        if (!scanner) {
-            console.error('[FW Scanner] Scanner not initialized');
-            lastScanState = 'failed';
-            return { state: 'failed', findings: [], error: 'Scanner not initialized' };
-        }
+    function canScan() {
+        return documentContext && !isDomainWhitelisted() &&
+            window.StorageUtils.getSetting('diagnostics', {}).scanning !== false;
+    }
 
-        const allPatterns = collectPatterns();
-        const content = document.documentElement ? document.documentElement.innerHTML : '';
-        let findings = [];
+    async function reportScan(findings, state, context) {
+        if (context !== documentContext) return { state: 'unavailable', findings: [] };
         try {
-            findings = await scanner.progressiveScan(content, allPatterns, {
-                sourceUrl: window.location.href
-            });
-            lastScanState = scanner.lastScanState || 'success';
+            const report = await api.runtime.sendMessage({ type: 'SCAN_REPORT', data: {
+                pageUrl: window.location.href, findings, state, context
+            }});
+            if (context !== documentContext || !report?.accepted) {
+                return { state: report?.state || 'unavailable', findings: [] };
+            }
+            lastScanState = report.state;
+            // The background owns merging and dismissal, including network findings.
+            processFindings(report.findings);
+            return { state: lastScanState, findings: lastScanResults };
         } catch (error) {
             lastScanState = 'failed';
             return { state: 'failed', findings: [], error: error.message };
         }
+    }
 
-        processFindings(findings);
-        reportScan(findings, lastScanState);
-        return { state: lastScanState, findings: lastScanResults };
+    async function scanText(text, options = {}) {
+        const context = documentContext;
+        if (!canScan()) {
+            lastScanState = 'skipped';
+            return { state: 'skipped', findings: [] };
+        }
+        if (!scanner) return { state: 'failed', findings: [], error: 'Scanner not initialized' };
+        if (activeScans >= window.FerretWatchContracts.CAPTURE_LIMITS.pendingScans) {
+            return reportScan([], 'truncated', context);
+        }
+        activeScans += 1;
+        try {
+            // Scan state is per operation; DOM mutations and manual scans may overlap.
+            const operation = new ProgressiveScanner();
+            const findings = await operation.progressiveScan(text, collectPatterns(), {
+                sourceUrl: window.location.href, sourceKind: 'dom', skipBucketProbes: true, ...options
+            });
+            return await reportScan(findings,
+                options.truncated ? 'truncated' : (operation.lastScanState || 'success'), context);
+        } catch (error) {
+            return reportScan([], 'failed', context);
+        } finally { activeScans -= 1; }
+    }
+
+    async function runScan() {
+        return scanText(document.documentElement ? document.documentElement.innerHTML : '');
     }
 
     async function runScanText(text, options) {
-        if (isDomainWhitelisted() || !scanner || !text) {
-            return { state: 'skipped', findings: [] };
-        }
-        const findings = await scanner.progressiveScan(text, collectPatterns(), {
-            sourceKind: (options && options.sourceKind) || 'dom',
-            sourceUrl: (options && options.sourceUrl) || window.location.href,
-            skipBucketProbes: true
-        });
-        const state = scanner.lastScanState || 'success';
-        if (findings.length) {
-            processFindings(findings);
-            const merged = dedupeFindings(lastScanResults.concat(findings));
-            reportScan(merged, state);
-        }
-        return { state, findings };
-    }
-
-    function dedupeFindings(findings) {
-        const seen = new Set();
-        const unique = [];
-        findings.forEach((finding) => {
-            const key = finding.id || ((finding.type || '') + finding.value);
-            if (!seen.has(key)) {
-                seen.add(key);
-                unique.push(finding);
-            }
-        });
-        return unique;
+        return scanText(text, options);
     }
 
     function dismissFinding(idOrValue) {
@@ -343,7 +320,7 @@
             if (isDomainWhitelisted()) {
                 debugLog('[FW Content] FerretWatch disabled for whitelisted domain:', currentDomain);
                 lastScanState = 'skipped';
-                reportScan([], 'skipped');
+                lastScanResults = [];
                 return;
             }
 
@@ -396,6 +373,8 @@
         getSetting,
         processFindings,
         setScanner,
+        setDocumentContext,
+        getDocumentContext: () => documentContext,
         getScanner,
         getLastScanResults,
         getLastScanState: function() { return lastScanState; },

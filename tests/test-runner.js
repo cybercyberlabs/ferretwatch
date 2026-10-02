@@ -72,6 +72,7 @@ class TestRunner {
             // Register integration tests
             if (this.config.runIntegration) {
                 if (typeof require !== 'undefined') {
+                    this.registerSuite('integration', require('./integration/background-monitor.test.js').testFramework);
                     if (this.config.runLegacy) {
                         const integrationTest = require('./integration/scanning.test.js');
                         this.registerSuite('integration', integrationTest.testFramework);
@@ -216,7 +217,7 @@ class TestRunner {
         
         // Overall status
         if (overall.failed === 0) {
-            console.log(`\n🎉 ALL TESTS PASSED! Extension is ready for deployment.`);
+            console.log(`\n🎉 ALL AUTOMATED TESTS PASSED. Real-browser acceptance is separate.`);
         } else {
             console.log(`\n💥 ${overall.failed} TEST(S) FAILED! Review failures before deployment.`);
         }
@@ -228,7 +229,7 @@ class TestRunner {
         const report = {
             metadata: {
                 extensionName: 'Firefox Credential Scanner',
-                version: '1.5.0',
+                version: typeof require !== 'undefined' ? require('../manifest.json').version : 'unknown',
                 testRunDate: new Date().toISOString(),
                 testDuration: this.endTime - this.startTime,
                 nodeVersion: typeof process !== 'undefined' ? process.version : 'browser',
@@ -242,8 +243,8 @@ class TestRunner {
                 memoryUsage: this.getMemoryUsage()
             },
             coverage: {
-                unit: this.results.patterns ? 'patterns, entropy, masking' : 'not run',
-                integration: this.results.integration ? 'scanning pipeline, export functionality' : 'not run',
+                unit: this.results.regression ? 'scanner, contracts, patterns, settings and authorization regressions' : 'not run',
+                integration: this.results.integration ? 'manifest-loaded background, native events, lifecycle, settings, content reports and DOM mutations (mock browser APIs)' : 'not run',
                 performance: this.results.performance ? 'benchmarks, memory, concurrency' : 'not run'
             },
             recommendations: this.generateRecommendations()
@@ -316,7 +317,7 @@ class TestRunner {
         }
         
         // Coverage recommendations
-        if (!this.results.patterns && !this.results.utils) {
+        if (!this.results.regression && !this.results.patterns && !this.results.utils) {
             recommendations.push('Add unit tests for core functionality');
         }
         
@@ -330,7 +331,7 @@ class TestRunner {
         
         // Success recommendations
         if (overall.failed === 0 && overall.total > 10) {
-            recommendations.push('All tests passing - extension ready for deployment');
+            recommendations.push('Automated tests passed; run the documented browser acceptance checks');
             recommendations.push('Consider adding more edge case tests for robustness');
         }
         

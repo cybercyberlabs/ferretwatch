@@ -11,7 +11,10 @@ const CAPTURE_LIMITS = {
     scanTimeMs: 250,
     requestBodyBytes: 32 * 1024,
     matchesPerPattern: 200,
-    bridgeMessageBytes: 280 * 1024
+    bridgeMessageBytes: 280 * 1024,
+    captureTimeMs: 5000,
+    domQueueBytes: 256 * 1024,
+    findingsPerTab: 1000
 };
 
 const PATTERN_CATEGORIES = ['aws', 'github', 'database', 'payment', 'messaging', 'email', 'cloudStorage'];
@@ -96,16 +99,17 @@ function mergeSettings(base, overlay) {
 function migrateStoredSettings(stored) {
     const raw = stored && typeof stored === 'object' ? stored : {};
     const defaults = defaultSettings();
-    let merged = mergeSettings(defaults, raw.settings);
-    merged = mergeSettings(merged, raw.userSettings);
-    if (Array.isArray(raw.whitelistedDomains) &&
-        (!Array.isArray(merged.whitelistedDomains) || merged.whitelistedDomains.length === 0)) {
-        merged.whitelistedDomains = raw.whitelistedDomains.slice();
-    }
-    if (typeof raw.debugMode === 'boolean' &&
-        (raw.userSettings == null || raw.userSettings.debugMode === undefined) &&
-        (raw.settings == null || raw.settings.debugMode === undefined)) {
-        merged.debugMode = raw.debugMode;
+    // A canonical settings object is authoritative, including empty/false values.
+    // Read legacy keys only when no canonical object has been written yet.
+    const canonical = raw.settings && typeof raw.settings === 'object' && !Array.isArray(raw.settings);
+    let merged = mergeSettings(defaults, canonical ? raw.settings : raw.userSettings);
+    if (!canonical) {
+        if (Array.isArray(raw.whitelistedDomains) && !raw.userSettings?.whitelistedDomains) {
+            merged.whitelistedDomains = raw.whitelistedDomains.slice();
+        }
+        if (typeof raw.debugMode === 'boolean' && raw.userSettings?.debugMode === undefined) {
+            merged.debugMode = raw.debugMode;
+        }
     }
     const categories = {};
     PATTERN_CATEGORIES.forEach((category) => {
@@ -196,9 +200,14 @@ class FindingStore {
             };
         }
         const added = [];
+        let limited = false;
         (findings || []).forEach((finding) => {
             const id = finding.id || findingId(finding);
             const existing = tab.findings.get(id);
+            if (!existing && tab.findings.size >= CAPTURE_LIMITS.findingsPerTab) {
+                limited = true;
+                return;
+            }
             if (!existing) {
                 added.push(id);
             }
@@ -208,7 +217,9 @@ class FindingStore {
                 dismissed: existing ? existing.dismissed : !!finding.dismissed
             });
         });
-        tab.state = state || 'success';
+        const incomplete = ['failed', 'truncated', 'unavailable'];
+        const nextState = limited ? 'truncated' : (state || 'success');
+        tab.state = incomplete.find(value => value === tab.state || value === nextState) || nextState;
         return {
             accepted: true,
             state: tab.state,
@@ -305,7 +316,7 @@ class ResponseTap {
         this.forwardedBytes += bytes.byteLength;
         if (this.scannable && this.inspectedBytes < this.byteLimit) {
             const room = this.byteLimit - this.inspectedBytes;
-            const slice = bytes.subarray(0, room);
+            const slice = bytes.slice(0, room);
             this.inspected.push(slice);
             this.inspectedBytes += slice.byteLength;
             if (slice.byteLength < bytes.byteLength) {

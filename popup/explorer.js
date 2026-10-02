@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Listen for new API endpoints from background script
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'API_ENDPOINTS_UPDATED' && message.tabId === currentTabId) init(currentTabId);
     if (message.type === 'NEW_API_ENDPOINT' && message.tabId === currentTabId) {
         // Add new endpoint to the list
         const exists = apiEndpoints.some(e => e.method === message.endpoint.method && e.url === message.endpoint.url);

@@ -192,8 +192,8 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 
 // For browser environment
-if (typeof window !== 'undefined') {
-    window.ContextUtils = {
+if (typeof globalThis !== 'undefined') {
+    globalThis.ContextUtils = {
         removeScriptTags,
         removeCssTags,
         isMinifiedJavaScript,

@@ -2,7 +2,7 @@
 
 ![CyberCyberLabs Logo](images/browser-extension-logo.svg)
 
-**FerretWatch v2.3.5** - A Firefox extension that automatically scans pages, scripts, and text responses for exposed credentials and secrets. Monitoring stays on during normal browsing. Firefox is the validated target; Chrome and Edge packages install, but response-body inspection uses a Firefox-only stream filter.
+**FerretWatch v2.3.5** - A Firefox extension that automatically scans pages, scripts, and text responses for exposed credentials and secrets. Monitoring stays on during normal browsing. Firefox is the primary target. Chrome and Edge builds have limited monitoring because response-body inspection uses a Firefox-only stream filter. Real-browser acceptance remains open; see [monitoring validation](docs/monitoring-validation.md).
 
 ## Author
 
@@ -152,13 +152,13 @@ You can modify the detection patterns in `config/patterns.js` by editing the `DE
 - **Unmasked Exports**: Export functionality provides full credential values for security analysis
 - **Handle Exports Securely**: Exported files contain sensitive data - delete after analysis
 - **Local matching**: Pattern matching stays in the browser
-- **Bucket probes**: When public-access testing is enabled, the extension requests the discovered bucket URL. Those requests are separate from monitoring and from API replay
+- **Bucket probes**: Automatic document, DOM, and response monitoring does not probe discovered buckets. Explicit bucket tests and API replay can issue requests
 
 ## Performance Notes
 - Monitoring does not wrap page `fetch` or `XMLHttpRequest` unless the diagnostic `pageInterceptor` setting is turned on
 - Firefox inspects script and text responses with `webRequest.filterResponseData`, forwarding the original bytes before scanning
 - Chrome and Edge do not provide that filter. They still scan the loaded document. Response-body monitoring is unsupported there
-- Capture stops at 256 KB per response and 1 MB retained per tab. The page transfer continues
+- Inspection copies at most 256 KiB per response. History rolls over at 200 requests or 1 MiB per tab; future requests continue to be scanned. Filters detach after five seconds or when inspection limits are reached, allowing the page transfer to continue
 - Dismissal lasts until the next navigation. Export includes dismissed findings and marks them
 - A real Cloudflare challenge page has not been verified. Leave that check open until an affected URL is tested
 

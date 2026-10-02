@@ -188,8 +188,8 @@ testFramework.test('settings migration keeps user choices and ignores invented c
         debugMode: false
     });
     Assert.equal(migrated.maxFindings, 7, 'settings value kept');
-    Assert.equal(migrated.debugMode, true, 'userSettings wins');
-    Assert.equal(migrated.whitelistedDomains[0], 'example.com', 'whitelist kept');
+    Assert.equal(migrated.debugMode, false, 'canonical settings wins');
+    Assert.equal(migrated.whitelistedDomains.length, 0, 'legacy whitelist does not override canonical');
     Assert.false(migrated.enabledCategories.aws, 'aws choice kept');
     Assert.equal(migrated.enabledCategories.slack, undefined, 'unknown category dropped');
     Assert.true(migrated.enabledCategories.github, 'real category defaulted');
@@ -306,8 +306,9 @@ testFramework.test('page monitoring source does not wrap fetch for normal operat
     Assert.match(index, /pageInterceptor !== true/, 'page wrapper is diagnostic only');
     Assert.match(index, /name === 'RESCAN'/, 'popup action is handled');
     const background = fs.readFileSync(path.join(__dirname, '../../background.js'), 'utf8');
-    Assert.match(background, /filterResponseData/, 'firefox response filter');
-    Assert.match(background, /filter\.write\(event\.data\)/, 'bytes forwarded before scan');
+    const monitor = fs.readFileSync(path.join(__dirname, '../../utils/response-monitor.js'), 'utf8');
+    Assert.match(monitor, /filterResponseData/, 'firefox response filter');
+    Assert.match(monitor, /filter\.write\(event\.data\)/, 'bytes forwarded before scan');
     Assert.false(background.includes('content.js'), 'removed content.js reinjection');
 });
 

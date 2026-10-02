@@ -35,7 +35,7 @@ class ProgressiveScanner {
      * @param {...any} args - Additional arguments to log
      */
     debugLog(message, ...args) {
-        if (window.StorageUtils?.getSetting('debugMode', false)) {
+        if (globalThis.StorageUtils?.getSetting('debugMode', false)) {
             console.log(`[Scanner Debug] ${message}`, ...args);
         }
     }
@@ -46,7 +46,7 @@ class ProgressiveScanner {
      * @param {...any} args - Additional arguments to log
      */
     infoLog(message, ...args) {
-        if (window.StorageUtils?.getSetting('debugMode', false)) {
+        if (globalThis.StorageUtils?.getSetting('debugMode', false)) {
             console.log(`[Scanner] ${message}`, ...args);
         }
     }
@@ -108,7 +108,7 @@ class ProgressiveScanner {
                 this.reportIntermediateResults(visibleFindings, 'visible');
             }
 
-            const scanningMode = window.StorageUtils?.getSetting('scanningMode', 'progressive');
+            const scanningMode = globalThis.StorageUtils?.getSetting('scanningMode', 'progressive');
             let allFindings = visibleFindings;
 
             if (scanningMode === 'progressive' || scanningMode === 'full') {
@@ -209,7 +209,7 @@ class ProgressiveScanner {
     }
 
     applyFindingLimit(findings) {
-        const maxFindings = window.StorageUtils?.getSetting('maxFindings', 50);
+        const maxFindings = globalThis.StorageUtils?.getSetting('maxFindings', 50);
         if (!maxFindings || findings.length <= maxFindings) {
             return findings;
         }
@@ -245,7 +245,7 @@ class ProgressiveScanner {
     }
 
     shouldProbeBuckets() {
-        const settings = window.StorageUtils?.getBucketScanningSettings?.() || {};
+        const settings = globalThis.StorageUtils?.getBucketScanningSettings?.() || {};
         return settings.testPublicAccess === true;
     }
 
@@ -268,19 +268,23 @@ class ProgressiveScanner {
      */
     async scanWithPatterns(content, patterns, options) {
         const findings = [];
-        const maxFindings = options.deferLimit ? Infinity : window.StorageUtils?.getSetting('maxFindings', 50);
+        const maxFindings = options.deferLimit ? Infinity : globalThis.StorageUtils?.getSetting('maxFindings', 50);
         const matchCap = (typeof FerretWatchContracts !== 'undefined'
             ? FerretWatchContracts.CAPTURE_LIMITS.matchesPerPattern
             : 200);
 
         for (const patternConfig of patterns) {
-            // Check if scan should be aborted
+            // Check between patterns as well as sources.
+            if (this.pastScanDeadline(options)) {
+                this.inspectionTruncated = true;
+                break;
+            }
             if (this.abortController?.signal.aborted) {
                 break;
             }
             
             // Check if category is enabled
-            if (!window.StorageUtils?.isCategoryEnabled(patternConfig.category)) {
+            if (!globalThis.StorageUtils?.isCategoryEnabled(patternConfig.category)) {
                 continue;
             }
             
@@ -434,8 +438,8 @@ class ProgressiveScanner {
      * @returns {Promise<void>}
      */
     debouncedScan(content, patterns, options = {}) {
-        const delay = window.StorageUtils?.getSetting('scanDelay', 500);
-        const enableDebounce = window.StorageUtils?.getSetting('enableDebounce', true);
+        const delay = globalThis.StorageUtils?.getSetting('scanDelay', 500);
+        const enableDebounce = globalThis.StorageUtils?.getSetting('enableDebounce', true);
         
         if (!enableDebounce) {
             return this.progressiveScan(content, patterns, options);
@@ -542,17 +546,13 @@ class ProgressiveScanner {
      */
     async testBucketAccessibility(bucketInfoList) {
         const results = [];
-        const bucketSettings = window.StorageUtils?.getBucketScanningSettings() || {};
+        const bucketSettings = globalThis.StorageUtils?.getBucketScanningSettings() || {};
         const maxConcurrent = bucketSettings.maxConcurrentTests || 3;
         const testTimeout = bucketSettings.testTimeout || 5000;
         
         // Process buckets in chunks to respect concurrency limits
         for (let i = 0; i < bucketInfoList.length; i += maxConcurrent) {
-            // Check if scan should be aborted
-            if (this.abortController?.signal.aborted) {
-                break;
-            }
-            
+            if (this.abortController?.signal.aborted) break;
             const chunk = bucketInfoList.slice(i, i + maxConcurrent);
             const chunkPromises = chunk.map(async (bucketInfo) => {
                 try {
@@ -697,11 +697,11 @@ class ProgressiveScanner {
      * @private
      */
     isBucketScanningEnabled() {
-        if (!window.StorageUtils) {
+        if (!globalThis.StorageUtils) {
             return false;
         }
         
-        return window.StorageUtils.isBucketScanningEnabled();
+        return globalThis.StorageUtils.isBucketScanningEnabled();
     }
 
     /**
@@ -710,11 +710,11 @@ class ProgressiveScanner {
      * @returns {boolean} True if provider is enabled
      */
     isProviderEnabled(provider) {
-        if (!window.StorageUtils) {
+        if (!globalThis.StorageUtils) {
             return true; // Default to enabled if no settings available
         }
         
-        return window.StorageUtils.isProviderEnabled(provider);
+        return globalThis.StorageUtils.isProviderEnabled(provider);
     }
     
     /**
@@ -793,8 +793,8 @@ class ProgressiveScanner {
     }
     
     isDomainWhitelisted() {
-        if (window.StorageUtils) {
-            return window.StorageUtils.isDomainWhitelisted(window.location.hostname);
+        if (globalThis.StorageUtils) {
+            return globalThis.StorageUtils.isDomainWhitelisted(window.location.hostname);
         }
         return false;
     }

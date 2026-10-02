@@ -1,17 +1,17 @@
 {
   "metadata": {
     "extensionName": "Firefox Credential Scanner",
-    "version": "1.5.0",
-    "testRunDate": "2026-10-02T09:53:40.373Z",
-    "testDuration": 109,
-    "nodeVersion": "v20.19.5",
+    "version": "2.3.5",
+    "testRunDate": "2026-10-02T10:39:29.120Z",
+    "testDuration": 1638,
+    "nodeVersion": "v24.19.0",
     "testFramework": "Custom TestFramework v1.0"
   },
   "summary": {
-    "passed": 16,
+    "passed": 31,
     "failed": 0,
-    "total": 16,
-    "executionTime": 95,
+    "total": 31,
+    "executionTime": 1629,
     "suiteResults": {
       "regression": {
         "passed": 16,
@@ -19,19 +19,34 @@
         "skipped": 0,
         "total": 16,
         "failures": [],
-        "executionTime": 95
+        "executionTime": 82
+      },
+      "integration": {
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0,
+        "total": 15,
+        "failures": [],
+        "executionTime": 1547
       }
     }
   },
   "suiteDetails": {
     "unit": null,
-    "integration": null,
+    "integration": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "total": 15,
+      "failures": [],
+      "executionTime": 1547
+    },
     "performance": null,
     "overall": {
-      "passed": 16,
+      "passed": 31,
       "failed": 0,
-      "total": 16,
-      "executionTime": 95,
+      "total": 31,
+      "executionTime": 1629,
       "suiteResults": {
         "regression": {
           "passed": 16,
@@ -39,7 +54,15 @@
           "skipped": 0,
           "total": 16,
           "failures": [],
-          "executionTime": 95
+          "executionTime": 82
+        },
+        "integration": {
+          "passed": 15,
+          "failed": 0,
+          "skipped": 0,
+          "total": 15,
+          "failures": [],
+          "executionTime": 1547
         }
       }
     },
@@ -49,31 +72,29 @@
       "skipped": 0,
       "total": 16,
       "failures": [],
-      "executionTime": 95
+      "executionTime": 82
     }
   },
   "performance": {
-    "averageTestTime": 5.9375,
+    "averageTestTime": 52.54838709677419,
     "slowestSuite": {
-      "name": "regression",
-      "time": 95
+      "name": "integration",
+      "time": 1547
     },
     "memoryUsage": {
-      "heapUsed": 5,
-      "heapTotal": 7,
-      "external": 1
+      "heapUsed": 14,
+      "heapTotal": 21,
+      "external": 3
     }
   },
   "coverage": {
-    "unit": "not run",
-    "integration": "not run",
+    "unit": "scanner, contracts, patterns, settings and authorization regressions",
+    "integration": "manifest-loaded background, native events, lifecycle, settings, content reports and DOM mutations (mock browser APIs)",
     "performance": "not run"
   },
   "recommendations": [
-    "Add unit tests for core functionality",
-    "Add integration tests for end-to-end workflows",
     "Add performance benchmarks for production readiness",
-    "All tests passing - extension ready for deployment",
+    "Automated tests passed; run the documented browser acceptance checks",
     "Consider adding more edge case tests for robustness"
   ]
 }

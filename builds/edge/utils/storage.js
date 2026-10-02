@@ -306,8 +306,8 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 
 // For browser environment
-if (typeof window !== 'undefined') {
-    window.StorageUtils = {
+if (typeof globalThis !== 'undefined') {
+    globalThis.StorageUtils = {
         DEFAULT_SETTINGS,
         getSetting,
         setSetting,

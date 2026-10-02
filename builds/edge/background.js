@@ -8,6 +8,8 @@ try {
     if (typeof importScripts === 'function' && typeof FerretWatchContracts === 'undefined') {
         importScripts(
             'utils/contracts.js',
+            'utils/storage.js',
+            'utils/response-monitor.js',
             'config/patterns.js',
             'utils/context.js',
             'utils/scanner.js'
@@ -30,6 +32,8 @@ class BackgroundService {
         this.pageUrls = new Map();
         this.responseScanner = null;
         this.pendingScans = 0;
+        this.queuedScans = 0;
+        this.policyVersion = 0;
 
         this.init();
     }
@@ -50,10 +54,11 @@ class BackgroundService {
         this.setupMessageListeners();
         this.setupStorageListeners();
         this.setupTabListeners();
-        this.installResponseMonitor();
+        this.nativeMonitor = new NativeResponseMonitor(this, typeof browser !== 'undefined' ? browser : chrome);
+        this.nativeMonitor.install();
 
         // Load settings (Async)
-        this.loadSettings().then(() => {
+        this.ready = this.loadSettings().then(() => {
 // debugLog('✅ Background service worker ready');
         });
     }
@@ -62,11 +67,11 @@ class BackgroundService {
     async loadSettings() {
         try {
             const api = typeof browser !== 'undefined' ? browser : chrome;
-            const result = await api.storage.local.get(['settings', 'userSettings', 'whitelistedDomains', 'debugMode']);
-            this.settings = FerretWatchContracts.migrateStoredSettings(result);
+            this.settings = await globalThis.StorageUtils.ensureSettings();
             this.debugMode = !!this.settings.debugMode;
-            if (!result.settings) {
-                await api.storage.local.set({ settings: this.settings });
+            // Existing tabs may not navigate after extension startup.
+            for (const tab of await api.tabs.query({})) {
+                if (tab.url && !this.pageUrls.has(tab.id)) this.pageUrls.set(tab.id, tab.url);
             }
         } catch (error) {
             console.error('Failed to load settings:', error);
@@ -89,9 +94,32 @@ class BackgroundService {
 
 
 
+    extensionOrigin() {
+        try {
+            const api = typeof browser !== 'undefined' ? browser : chrome;
+            return api.runtime.getURL('');
+        } catch (error) {
+            return '';
+        }
+    }
+
+    isExtensionSender(sender) {
+        return FerretWatchContracts.isExtensionSender(sender, this.extensionOrigin());
+    }
+
+    authorizedTab(message, sender) {
+        return FerretWatchContracts.authorizedTabId(message, sender, this.extensionOrigin());
+    }
+
     async handleMessage(message, sender, sendResponse) {
         try {
+            const tabId = this.authorizedTab(message, sender);
+            const extensionPage = this.isExtensionSender(sender);
+            await this.ready;
             switch (message.type) {
+                case 'REGISTER_DOCUMENT':
+                    sendResponse(sender.tab ? this.documentContext(sender.tab.id) : null);
+                    break;
                 case 'SCAN_COMPLETE':
                 case 'SCAN_REPORT':
                     sendResponse(await this.handleScanReport(message.data, sender.tab?.id));
@@ -99,17 +127,23 @@ class BackgroundService {
 
                 case 'GET_FINDINGS':
                 case 'EXPORT_FINDINGS': {
-                    const tabId = message.tabId || sender.tab?.id;
+                    if (tabId == null) {
+                        sendResponse({ state: 'unavailable', findings: [], exportFindings: [], error: 'Tab not authorized' });
+                        break;
+                    }
                     sendResponse({
                         state: this.findingStore.state(tabId),
                         findings: this.findingStore.list(tabId, false),
-                        exportFindings: this.findingStore.list(tabId, true)
+                        exportFindings: extensionPage ? this.findingStore.list(tabId, true) : []
                     });
                     break;
                 }
 
                 case 'DISMISS_FINDING': {
-                    const tabId = message.tabId || sender.tab?.id;
+                    if (tabId == null) {
+                        sendResponse({ success: false, state: 'unavailable', findings: [], error: 'Tab not authorized' });
+                        break;
+                    }
                     const dismissed = this.findingStore.dismiss(tabId, message.id);
                     const active = this.findingStore.list(tabId, false);
                     await this.updateBadge(tabId, active.length);
@@ -122,12 +156,16 @@ class BackgroundService {
                     break;
 
                 case 'UPDATE_SETTINGS':
+                    if (!extensionPage) { sendResponse({ success: false, error: 'Extension page required' }); break; }
                     await this.updateSettings(message.data);
                     sendResponse({ success: true });
                     break;
 
                 case 'GET_TAB_RESULTS': {
-                    const tabId = message.tabId || sender.tab?.id;
+                    if (tabId == null) {
+                        sendResponse({ results: [], state: 'unavailable', error: 'Tab not authorized' });
+                        break;
+                    }
                     const results = this.findingStore.list(tabId, false);
                     sendResponse({ results, state: this.findingStore.state(tabId) });
                     break;
@@ -139,6 +177,10 @@ class BackgroundService {
                     break;
 
                 case 'EXPORT_SESSION_DATA':
+                    if (!extensionPage) {
+                        sendResponse({ error: 'Export is only available from the extension' });
+                        break;
+                    }
                     const sessionData = await this.getSessionData();
                     sendResponse({ data: sessionData });
                     break;
@@ -149,37 +191,53 @@ class BackgroundService {
                     break;
 
                 case 'API_CALL_CAPTURED':
+                    if (!this.settings.diagnostics.pageInterceptor) { sendResponse({ success: false }); break; }
                     this.handleApiCall(message.data, sender.tab?.id, sender.tab?.url);
                     sendResponse({ success: true });
                     break;
 
                 case 'API_RESPONSE_CAPTURED':
+                    if (!this.settings.diagnostics.pageInterceptor) { sendResponse({ success: false }); break; }
                     this.handleApiResponse(message.data, sender.tab?.id);
                     sendResponse({ success: true });
                     break;
 
                 case 'REPLAY_REQUEST':
-                    this.replayRequest(message.data).then(sendResponse);
-                    return true;
-
                 case 'PROXY_REQUEST':
-                    // Must return true to keep channel open for async fetch
-                    this.handleProxyRequest(message.data, message.tabId).then(sendResponse);
+                    if (!extensionPage) { sendResponse({ success: false, error: 'Replay requires an extension page' }); break; }
+                    if (tabId == null) {
+                        sendResponse({ success: false, error: 'Replay requires the source tab. Refusing to use another tab.' });
+                        break;
+                    }
+                    this.replayRequest({ ...(message.data || {}), sourceTabId: tabId, tabId }).then(sendResponse);
                     return true;
-
 
                 case 'GET_API_ENDPOINTS':
-                    const endpoints = this.apiEndpoints.get(message.tabId) || [];
+                    if (tabId == null) {
+                        sendResponse({ endpoints: [], error: 'Tab not authorized' });
+                        break;
+                    }
+                    const endpoints = this.apiEndpoints.get(tabId) || [];
                     sendResponse({ endpoints });
                     break;
 
                 case 'CLEAR_API_ENDPOINTS':
-                    this.apiEndpoints.set(message.tabId, []);
+                    if (tabId == null) {
+                        sendResponse({ success: false, error: 'Tab not authorized' });
+                        break;
+                    }
+                    this.apiEndpoints.set(tabId, []);
+                    this.requestLog.dropTab(tabId);
+                    this.notifyExplorerTabs(tabId);
                     sendResponse({ success: true });
                     break;
 
                 case 'SCAN_UNUSED_ENDPOINTS':
-                    this.handleUnusedEndpointScan(message.tabId, sender.tab?.id).then(sendResponse);
+                    if (tabId == null) {
+                        sendResponse({ success: false, error: 'Tab not authorized' });
+                        break;
+                    }
+                    this.handleUnusedEndpointScan(tabId, sender.tab?.id).then(sendResponse);
                     return true;
 
                 default:
@@ -193,15 +251,14 @@ class BackgroundService {
     }
 
     async handleScanReport(scanData, tabId) {
-        if (!tabId || !scanData) {
-            return { accepted: false, state: 'unavailable', findings: [] };
+        if (tabId == null || !scanData || !this.contextCurrent(tabId, scanData.context)) {
+            return { accepted: false, reason: 'stale', state: 'unavailable', findings: [] };
         }
-        const currentUrl = this.pageUrls.get(tabId);
-        if (scanData.pageUrl && currentUrl && scanData.pageUrl !== currentUrl) {
-            return { accepted: false, reason: 'stale', state: this.findingStore.state(tabId), findings: this.findingStore.list(tabId, false) };
+        if (this.isWhitelistedUrl(this.pageUrls.get(tabId)) || this.settings?.diagnostics.scanning === false) {
+            return { accepted: false, state: 'skipped', findings: [] };
         }
-        const generation = this.findingStore.generation(tabId);
-        const report = this.findingStore.report(tabId, generation, scanData.findings || [], scanData.state || 'success');
+        const report = this.findingStore.report(tabId, scanData.context.generation,
+            scanData.findings || [], scanData.state || 'success');
         this.tabResults.set(tabId, report.findings);
         if (report.accepted && this.settings && (this.settings.enableNotifications || this.settings.showNotifications)) {
             const fresh = (scanData.findings || []).filter((finding) => report.added.includes(finding.id || FerretWatchContracts.findingId(finding)));
@@ -413,7 +470,8 @@ class BackgroundService {
         const bounded = FerretWatchContracts.boundText(responseData.responseBody, FerretWatchContracts.CAPTURE_LIMITS.bytesPerResponse);
         this.scanCapturedText(tabId, this.pageUrls.get(tabId), bounded.text, {
             url: responseData.url,
-            sourceKind: 'response'
+            sourceKind: 'response',
+            context: this.documentContext(tabId)
         });
     }
 
@@ -617,28 +675,13 @@ class BackgroundService {
     /**
      * Notify all API Explorer tabs that are watching a specific tab about new API calls
      */
-    async notifyExplorerTabs(sourceTabId, newEndpoint) {
+    async notifyExplorerTabs(sourceTabId) {
+        // Invalidate only; extension pages fetch their authorized bounded snapshot.
+        // tabs.sendMessage targets content scripts, not the Explorer extension page.
         try {
-            // Query all tabs to find any that are API Explorer pages
-            const allTabs = await (typeof browser !== 'undefined' ? browser : chrome).tabs.query({});
-
-            for (const tab of allTabs) {
-                // Check if this is an explorer page for the source tab (support both v1 and v2)
-                if (tab.url && (tab.url.includes('popup/explorer.html') || tab.url.includes('popup/explorer-v2.html')) && tab.url.includes(`tabId=${sourceTabId}`)) {
-                    // Send update to the explorer tab
-                    (typeof browser !== 'undefined' ? browser : chrome).tabs.sendMessage(tab.id, {
-                        type: 'NEW_API_ENDPOINT',
-                        tabId: sourceTabId,
-                        endpoint: newEndpoint
-                    }).catch(err => {
-                        // Explorer might not be ready yet, that's fine
-                        console.debug('Could not notify explorer tab:', err.message);
-                    });
-                }
-            }
-        } catch (error) {
-            console.error('Error notifying explorer tabs:', error);
-        }
+            const api = typeof browser !== 'undefined' ? browser : chrome;
+            await api.runtime.sendMessage({ type: 'API_ENDPOINTS_UPDATED', tabId: sourceTabId });
+        } catch (_) { /* no Explorer open */ }
     }
 
     async handleProxyRequest(requestData, specifiedTabId) {
@@ -651,32 +694,19 @@ class BackgroundService {
 
 
     async updateSettings(newSettings) {
-
-        // Validate settings before updating
-        const validatedSettings = FerretWatchContracts.migrateStoredSettings({
+        const settings = FerretWatchContracts.migrateStoredSettings({
             settings: { ...this.settings, ...this.validateSettings(newSettings) }
         });
-        this.settings = validatedSettings;
+        await chrome.storage.local.set({ settings });
+    }
 
-        try {
-            await chrome.storage.local.set({ settings: this.settings });
-
-            // Broadcast settings update to all tabs
-            const tabs = await chrome.tabs.query({});
-            for (const tab of tabs) {
-                try {
-                    await chrome.tabs.sendMessage(tab.id, {
-                        type: 'SETTINGS_UPDATED',
-                        data: this.settings
-                    });
-                } catch (error) {
-                    // Tab might not have content script loaded yet - this is expected
-                    console.debug(`Could not notify tab ${tab.id} of settings update:`, error.message);
-                }
-            }
-        } catch (error) {
-            console.error('Failed to save settings:', error);
-            throw error;
+    async broadcastSettings() {
+        const api = typeof browser !== 'undefined' ? browser : chrome;
+        for (const tab of await api.tabs.query({})) {
+            try {
+                await api.tabs.sendMessage(tab.id, { type: 'SETTINGS_UPDATED',
+                    data: this.settings, context: this.documentContext(tab.id) });
+            } catch (_) { /* A content script may not be loaded on this tab. */ }
         }
     }
 
@@ -735,14 +765,13 @@ class BackgroundService {
     }
 
     async showNotification(notificationData) {
-        if (!this.settings.enableNotifications) return;
+        if (!this.settings?.enableNotifications || this.settings.showNotifications === false) return;
 
         const options = {
             type: 'basic',
             iconUrl: chrome.runtime.getURL('icons/icon-48.png'),
             title: notificationData.title || 'Credential Scanner',
-            message: notificationData.message || 'Credentials detected',
-            priority: notificationData.findings?.some(f => f.riskLevel === 'critical') ? 2 : 1
+            message: notificationData.message || 'Credentials detected'
         };
 
         try {
@@ -764,8 +793,9 @@ class BackgroundService {
 
         try {
             // Use browserAction for Firefox Manifest V2 compatibility
-            await chrome.browserAction.setBadgeText({ text: badgeText, tabId });
-            await chrome.browserAction.setBadgeBackgroundColor({ color: badgeColor, tabId });
+            const action = chrome.browserAction || chrome.action;
+            await action.setBadgeText({ text: badgeText, tabId });
+            await action.setBadgeBackgroundColor({ color: badgeColor, tabId });
         } catch (error) {
             console.error('Failed to update badge:', error);
         }
@@ -773,38 +803,64 @@ class BackgroundService {
 
     setupStorageListeners() {
         chrome.storage.onChanged.addListener((changes, namespace) => {
-            if (namespace === 'local' && changes.settings) {
-                this.settings = FerretWatchContracts.migrateStoredSettings({ settings: changes.settings.newValue });
-// debugLog('Settings updated from storage');
+            if (namespace !== 'local' || !changes.settings) return;
+            this.settings = globalThis.StorageUtils.applySettings(changes.settings.newValue);
+            this.policyVersion += 1;
+            this.nativeMonitor?.policyChanged();
+            for (const [tabId, url] of this.pageUrls) {
+                if (this.isWhitelistedUrl(url)) {
+                    const tab = this.findingStore.ensure(tabId);
+                    tab.findings.clear();
+                    tab.state = 'skipped';
+                    this.tabResults.delete(tabId);
+                    this.updateBadge(tabId, 0);
+                }
             }
+            this.broadcastSettings().catch(() => {});
         });
     }
 
+    documentContext(tabId) {
+        return { generation: this.findingStore.generation(tabId), policyVersion: this.policyVersion };
+    }
+
+    contextCurrent(tabId, context) {
+        const tab = this.findingStore.tabs.get(tabId);
+        return !!(tab && context && tab.generation === context.generation &&
+            context.policyVersion === this.policyVersion);
+    }
+
+    beginDocument(tabId, url) {
+        this.nativeMonitor?.cancelTab(tabId);
+        this.findingStore.beginDocument(tabId);
+        this.pageUrls.set(tabId, url);
+        this.tabResults.delete(tabId);
+        this.apiEndpoints.set(tabId, []);
+        this.requestLog.dropTab(tabId);
+        this.captureBudgets.delete(tabId);
+        this.updateBadge(tabId, 0);
+        this.notifyExplorerTabs(tabId);
+    }
+
     setupTabListeners() {
-        // Clear results when tab is removed
-        chrome.tabs.onRemoved.addListener((tabId) => {
+        chrome.tabs.onRemoved.addListener(tabId => {
+            this.nativeMonitor?.cancelTab(tabId);
             this.tabResults.delete(tabId);
             this.apiEndpoints.delete(tabId);
             this.findingStore.close(tabId);
             this.requestLog.dropTab(tabId);
             this.captureBudgets.delete(tabId);
             this.pageUrls.delete(tabId);
+            this.notifyExplorerTabs(tabId);
         });
-
         chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+            // A same-document URL change retains findings and request ownership.
+            // New documents are established at onBeforeRequest, before subresources.
             if (changeInfo.url || changeInfo.status === 'loading') {
-                if (tab && tab.url) {
-                    this.pageUrls.set(tabId, tab.url);
-                }
+                if (tab?.url) this.pageUrls.set(tabId, tab.url);
             }
-            if (changeInfo.status === 'loading') {
-                this.tabResults.delete(tabId);
-                this.apiEndpoints.set(tabId, []);
-                this.findingStore.beginDocument(tabId);
-                this.requestLog.dropTab(tabId);
-                const budget = this.budgetFor(tabId);
-                budget.reset();
-                this.updateBadge(tabId, 0);
+            if (!this.nativeMonitor?.hasNavigationListener && changeInfo.status === 'loading') {
+                this.beginDocument(tabId, tab?.url);
             }
         });
     }
@@ -847,110 +903,49 @@ class BackgroundService {
         return header ? header.value : '';
     }
 
+    queueCapturedText(tabId, pageUrl, text, meta) {
+        if (this.queuedScans >= FerretWatchContracts.CAPTURE_LIMITS.pendingScans) {
+            this.handleScanReport({ context: meta.context, findings: [], state: 'truncated' }, tabId);
+            return;
+        }
+        this.queuedScans += 1;
+        setTimeout(async () => {
+            try { await this.scanCapturedText(tabId, pageUrl, text, meta); }
+            finally { this.queuedScans -= 1; }
+        }, 0);
+    }
+
     async scanCapturedText(tabId, pageUrl, text, meta) {
-        if (!text || tabId == null || tabId < 0) {
-            return;
-        }
+        await this.ready;
+        const context = meta.context;
+        if (!text || !this.contextCurrent(tabId, context) ||
+            this.settings.diagnostics.scanning === false ||
+            this.settings.diagnostics.monitoring === false ||
+            this.isWhitelistedUrl(this.pageUrls.get(tabId) || pageUrl) || this.isWhitelistedUrl(meta.url)) return;
         if (this.pendingScans >= FerretWatchContracts.CAPTURE_LIMITS.pendingScans) {
-            return;
-        }
-        const budget = this.budgetFor(tabId);
-        const retained = budget.retain(text);
-        if (!retained.text) {
-            return;
-        }
-        if (typeof ProgressiveScanner === 'undefined' || typeof patternManager === 'undefined') {
+            await this.handleScanReport({ context, findings: [], state: 'truncated' }, tabId);
             return;
         }
         this.pendingScans += 1;
         try {
-            if (!this.responseScanner) {
-                this.responseScanner = new ProgressiveScanner();
-            }
-            const findings = await this.responseScanner.progressiveScan(retained.text, patternManager.getAllPatterns(), {
-                sourceKind: meta.sourceKind || 'response',
-                sourceUrl: meta.url,
-                skipBucketProbes: true,
-                scanTimeMs: FerretWatchContracts.CAPTURE_LIMITS.scanTimeMs
+            // Each operation owns its cancellation, timing and state fields.
+            const scanner = new ProgressiveScanner();
+            const bounded = FerretWatchContracts.boundText(text, FerretWatchContracts.CAPTURE_LIMITS.bytesPerResponse);
+            const findings = await scanner.progressiveScan(bounded.text, patternManager.getAllPatterns(), {
+                sourceKind: meta.sourceKind || 'response', sourceUrl: meta.url,
+                skipBucketProbes: true, scanTimeMs: FerretWatchContracts.CAPTURE_LIMITS.scanTimeMs
             });
-            const state = retained.state === 'truncated' || this.responseScanner.lastScanState === 'truncated'
-                ? 'truncated'
-                : (this.responseScanner.lastScanState || 'success');
-            await this.handleScanReport({
-                pageUrl: pageUrl || meta.url,
-                findings,
-                state
-            }, tabId);
-        } catch (error) {
-            console.debug('Response scan failed:', error.message);
+            const state = meta.state === 'failed' || scanner.lastScanState === 'failed' ? 'failed' :
+                meta.state === 'truncated' || bounded.truncated || scanner.lastScanState === 'truncated'
+                    ? 'truncated' : (scanner.lastScanState || 'failed');
+            await this.handleScanReport({ context, findings, state }, tabId);
+        } catch (_) {
+            await this.handleScanReport({ context, findings: [], state: 'failed' }, tabId);
         } finally {
             this.pendingScans -= 1;
         }
     }
 
-    installResponseMonitor() {
-        const api = typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null);
-        const webRequest = api && (api.webRequest || null);
-        if (!webRequest || typeof webRequest.filterResponseData !== 'function' || !webRequest.onHeadersReceived) {
-            console.debug('Response filter API is unavailable in this browser. Document HTML and scripts are still scanned in the page.');
-            return;
-        }
-        const watched = new Set(['xmlhttprequest', 'fetch', 'script']);
-        webRequest.onHeadersReceived.addListener((details) => {
-            try {
-                if (!this.monitoringEnabled() || !watched.has(details.type)) {
-                    return;
-                }
-                if (details.tabId < 0 || this.isWhitelistedUrl(details.url)) {
-                    return;
-                }
-                const contentType = this.headerContentType(details.responseHeaders);
-                if (!FerretWatchContracts.isScannableContentType(contentType)) {
-                    return;
-                }
-                const filter = webRequest.filterResponseData(details.requestId);
-                const tap = new FerretWatchContracts.ResponseTap({
-                    byteLimit: FerretWatchContracts.CAPTURE_LIMITS.bytesPerResponse,
-                    contentType
-                });
-                let wrote = false;
-                filter.ondata = (event) => {
-                    try {
-                        filter.write(event.data);
-                        wrote = true;
-                        tap.write(event.data);
-                    } catch (error) {
-                        try { filter.disconnect(); } catch (disconnectError) { /* already closed */ }
-                    }
-                };
-                filter.onstop = () => {
-                    try {
-                        if (wrote) {
-                            filter.close();
-                        } else {
-                            filter.disconnect();
-                        }
-                    } catch (error) {
-                        try { filter.disconnect(); } catch (disconnectError) { /* already closed */ }
-                    }
-                    const snapshot = tap.finish();
-                    const pageUrl = this.pageUrls.get(details.tabId);
-                    setTimeout(() => {
-                        this.scanCapturedText(details.tabId, pageUrl, snapshot.text, {
-                            url: details.url,
-                            sourceKind: details.type === 'script' ? 'script' : 'response'
-                        });
-                    }, 0);
-                };
-                filter.onerror = () => {
-                    tap.fail();
-                    try { filter.disconnect(); } catch (error) { /* already closed */ }
-                };
-            } catch (error) {
-                console.debug('Could not attach response filter:', error.message);
-            }
-        }, { urls: ['<all_urls>'] }, ['responseHeaders']);
-    }
 }
 
 // Chrome-specific API compatibility layer
@@ -1023,130 +1018,6 @@ self.addEventListener('activate', (event) => {
         clients.claim() // Take control of all clients immediately
     );
 });
-
-// TOP-LEVEL WEB REQUEST LISTENER FOR PROXY SPOOFING
-// Stores URLs that are currently being proxied to allow Preflight (OPTIONS) spoofing
-const activeProxyTargets = new Set();
-// Expose for BackgroundService to use
-self.activeProxyTargets = activeProxyTargets;
-
-(function () {
-    try {
-        const api = typeof browser !== 'undefined' ? browser : chrome;
-        const webRequest = api.webRequest || (typeof chrome !== 'undefined' ? chrome.webRequest : null);
-
-        if (webRequest && webRequest.onBeforeSendHeaders) {
-// debugLog('✅ [TOP-LEVEL] Setting up webRequest listeners');
-
-            // Listener 1: Capture ALL request headers (including cookies) for API discovery
-            webRequest.onBeforeSendHeaders.addListener(
-                (details) => {
-                    // Skip extension internal requests
-                    if (details.url.startsWith('chrome-extension://') || details.url.startsWith('moz-extension://')) {
-                        return;
-                    }
-
-                    // Skip non-XHR/Fetch requests (only capture API calls)
-                    if (details.type !== 'xmlhttprequest' && details.type !== 'fetch' && details.type !== 'other' && details.type !== 'script') {
-// debugLog(`⏭️ [HEADERS] Skipping non-API request type: ${details.type} for ${details.url}`);
-                        return;
-                    }
-
-// debugLog(`🎯 [HEADERS] Intercepted ${details.type} request: ${details.method} ${details.url}`);
-
-                    // Check for Cookie header in this request
-                    const hasCookie = details.requestHeaders?.some(h => h.name.toLowerCase() === 'cookie');
-// debugLog(`🍪 [HEADERS] Cookie present in webRequest: ${hasCookie}`);
-
-                    // Cache the full headers for this request
-                    if (backgroundService && backgroundService.cacheRequestHeaders) {
-                        backgroundService.cacheRequestHeaders(details.method, details.url, details.requestHeaders, details.requestId);
-                        if (backgroundService.requestLog && !backgroundService.isWhitelistedUrl(details.url)) {
-                            backgroundService.requestLog.observe({
-                                requestId: details.requestId,
-                                tabId: details.tabId,
-                                generation: backgroundService.findingStore.generation(details.tabId),
-                                method: details.method,
-                                url: details.url,
-                                headers: details.requestHeaders
-                            });
-                        }
-// debugLog(`📦 [HEADERS] Cached headers for ${details.method} ${details.url}`);
-                    } else {
-                        console.warn(`⚠️ [HEADERS] backgroundService not available!`);
-                    }
-                },
-                { urls: ["<all_urls>"] },
-                typeof browser !== 'undefined'
-                    ? ["requestHeaders"]  // Firefox
-                    : ["requestHeaders", "extraHeaders"]  // Chrome - extraHeaders needed for Cookie
-            );
-
-            // Listener 2: Proxy request rewriting (existing functionality)
-            webRequest.onBeforeSendHeaders.addListener(
-                (details) => {
-                    let hasProxyMarker = false;
-                    const headers = details.requestHeaders || [];
-
-                    // Check for marker and remove it
-                    for (let i = 0; i < headers.length; i++) {
-                        if (headers[i].name === 'X-FW-Proxy') {
-                            hasProxyMarker = true;
-                            headers.splice(i, 1); // Remove marker
-// debugLog('🎯 [PROXY] Intercepted request with marker:', details.url);
-                            break;
-                        }
-                    }
-
-                    // Check if this URL is in our active proxy list (for Preflight/OPTIONS)
-                    const isTarget = activeProxyTargets.has(details.url);
-
-                    if (hasProxyMarker || isTarget) {
-                        const targetUrl = new URL(details.url);
-                        const origin = targetUrl.origin;
-
-                        if (isTarget && !hasProxyMarker) {
-// debugLog(`🔎 [PROXY] Intercepted Preflight/Related request: ${details.method} ${details.url}`);
-                        }
-
-                        // Rewrite Origin
-                        let originFound = false;
-                        for (const h of headers) {
-                            if (h.name.toLowerCase() === 'origin') {
-// debugLog(`🔄 [PROXY] Rewriting Origin: ${h.value} -> ${origin}`);
-                                h.value = origin;
-                                originFound = true;
-                            } else if (h.name.toLowerCase() === 'referer') {
-// debugLog(`🔄 [PROXY] Rewriting Referer: ${h.value} -> ${targetUrl.href}`);
-                                h.value = targetUrl.href;
-                            }
-                        }
-
-                        if (!originFound) {
-// debugLog(`➕ [PROXY] Adding Origin: ${origin}`);
-                            headers.push({ name: 'Origin', value: origin });
-                            // Also ensure Referer is set if not present
-                            if (!headers.some(h => h.name.toLowerCase() === 'referer')) {
-                                headers.push({ name: 'Referer', value: targetUrl.href });
-                            }
-                        }
-
-                        return { requestHeaders: headers };
-                    }
-                },
-                { urls: ["<all_urls>"] },
-                // Firefox doesn't support "extraHeaders", Chrome needs it for some headers
-                typeof browser !== 'undefined'
-                    ? ["blocking", "requestHeaders"]  // Firefox
-                    : ["blocking", "requestHeaders", "extraHeaders"]  // Chrome
-            );
-        } else {
-            console.error('❌ [TOP-LEVEL] webRequest API not available!');
-        }
-    } catch (e) {
-        console.error('❌ [TOP-LEVEL] CRITICAL ERROR during webRequest setup:', e);
-    }
-})();
 
 // Initialize background service
 let backgroundService = null;

@@ -33,7 +33,7 @@
     // Global state
     let scannerInstance = null;
     let domObserver = null;
-    let domTimer = null;
+    let policyRevision = 0;
     let monitoringStopped = false;
 
     function contracts() {
@@ -155,12 +155,7 @@
                 }
 
                 if (name === 'SETTINGS_UPDATED') {
-                    if (window.StorageUtils && window.StorageUtils.applySettings && message.data) {
-                        window.StorageUtils.applySettings(message.data);
-                    }
-                    if (whitelist.loadWhitelist) {
-                        whitelist.loadWhitelist().then(() => applyMonitoringPolicy());
-                    }
+                    refreshPolicy(message);
                     sendResponse({ success: true });
                     return false;
                 }
@@ -221,11 +216,11 @@
     async function initialize() {
         debugLog('[FW Content] FerretWatch Content Script initialized');
 
-        // 1. Inject interceptor immediately (at document_start if possible)
-        await injectInterceptorEarly();
-
-        // 2. Initialize message handlers
+        // Register immediately at document_start; later async scans keep this token.
+        const registration = api.runtime.sendMessage({ type: 'REGISTER_DOCUMENT' });
         initMessageHandlers();
+        scanner.setDocumentContext(await registration);
+        await injectInterceptorEarly();
 
         // 3. Initialize scanner when DOM is ready
         if (document.readyState === 'loading') {
@@ -239,60 +234,52 @@
         }
     }
 
+    async function refreshPolicy(message) {
+        const previous = scanner.getDocumentContext();
+        // A settings broadcast may race navigation while the old page still exists.
+        if (previous && previous.generation !== message.context?.generation) return;
+        if (previous && previous.policyVersion > message.context?.policyVersion) return;
+        const revision = ++policyRevision;
+        if (domObserver) { domObserver.stop(); domObserver = null; }
+        scanner.setDocumentContext(null); // Invalidate in-flight scans immediately.
+        window.StorageUtils.applySettings(message.data);
+        if (whitelist.loadWhitelist) await whitelist.loadWhitelist();
+        if (revision !== policyRevision) return;
+        scanner.setDocumentContext(message.context);
+        applyMonitoringPolicy();
+        if (!monitoringStopped && scannerInstance) await scanner.runScan();
+    }
+
     function applyMonitoringPolicy() {
-        if (whitelist.isDomainWhitelisted && whitelist.isDomainWhitelisted()) {
-            monitoringStopped = true;
-            if (domObserver) {
-                domObserver.disconnect();
-                domObserver = null;
-            }
+        monitoringStopped = (whitelist.isDomainWhitelisted && whitelist.isDomainWhitelisted()) ||
+            window.StorageUtils.getSetting('diagnostics', {}).scanning === false;
+        if (monitoringStopped) {
+            if (domObserver) { domObserver.stop(); domObserver = null; }
             return;
         }
-        monitoringStopped = false;
-        if (!domObserver && document.documentElement) {
-            startDomObserver();
-        }
+        startDomObserver();
     }
 
     function startDomObserver() {
-        if (monitoringStopped || domObserver || !document.documentElement) {
-            return;
-        }
-        if (whitelist.isDomainWhitelisted && whitelist.isDomainWhitelisted()) {
-            return;
-        }
-        domObserver = new MutationObserver((mutations) => {
-            if (monitoringStopped) {
-                return;
-            }
-            const chunks = [];
-            mutations.forEach((mutation) => {
-                mutation.addedNodes.forEach((node) => {
-                    if (node.nodeType !== 1) {
-                        return;
-                    }
-                    if (node.closest && node.closest('.cyber-labs-credential-notification')) {
-                        return;
-                    }
-                    const text = node.innerText || node.textContent || '';
-                    if (text.trim()) {
-                        chunks.push(text);
-                    }
-                });
-            });
-            if (!chunks.length || !scanner.runScanText) {
-                return;
-            }
-            clearTimeout(domTimer);
-            domTimer = setTimeout(() => {
-                scanner.runScanText(chunks.join('\n'), {
-                    sourceKind: 'dom',
-                    sourceUrl: currentPageUrl()
-                });
-            }, 500);
-        });
-        domObserver.observe(document.documentElement, { childList: true, subtree: true });
+        if (monitoringStopped || domObserver || !document.documentElement || !scannerInstance) return;
+        if (whitelist.isDomainWhitelisted?.() || window.StorageUtils.getSetting('diagnostics', {}).scanning === false) return;
+        domObserver = new window.FerretWatchDomMonitor(
+            (text, options) => scanner.runScanText(text, options), document.documentElement);
     }
+
+    window.addEventListener('pagehide', () => {
+        monitoringStopped = true;
+        scanner.setDocumentContext(null);
+        if (domObserver) { domObserver.stop(); domObserver = null; }
+    });
+    window.addEventListener('pageshow', async event => {
+        if (!event.persisted) return;
+        scanner.setDocumentContext(await api.runtime.sendMessage({ type: 'REGISTER_DOCUMENT' }));
+        await window.StorageUtils.ensureSettings();
+        await whitelist.loadWhitelist();
+        applyMonitoringPolicy();
+        if (!monitoringStopped) await scanner.runScan();
+    });
 
     // Expose scanner instance globally for backward compatibility
     Object.defineProperty(window, 'scanner', {

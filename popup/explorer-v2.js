@@ -7,6 +7,7 @@
     'use strict';
 
     // State
+    let loadRevision = 0;
     let requests = new Map(); // Map<requestId, requestData>
     let selectedRequestId = null;
     let targetTabId = null;
@@ -88,6 +89,7 @@
 
         // Set up message listener for real-time updates
         api.runtime.onMessage.addListener((message) => {
+            if (message.type === 'API_ENDPOINTS_UPDATED' && message.tabId === targetTabId) loadEndpoints();
             if (message.type === 'NEW_API_ENDPOINT' && message.tabId === targetTabId) {
                 addOrUpdateRequest(message.endpoint);
             }
@@ -98,16 +100,24 @@
 
     // Load existing endpoints from background
     async function loadEndpoints() {
+        const revision = ++loadRevision;
         try {
             const response = await api.runtime.sendMessage({
                 type: 'GET_API_ENDPOINTS',
                 tabId: targetTabId
             });
 
+            if (revision !== loadRevision) return;
             if (response && response.endpoints) {
+                requests.clear();
+                elements.requestTbody.replaceChildren();
                 console.log(`[Explorer v2] Loaded ${response.endpoints.length} endpoints`);
                 response.endpoints.forEach(endpoint => addOrUpdateRequest(endpoint));
                 updateRequestCount();
+                if (selectedRequestId && !requests.has(selectedRequestId)) {
+                    selectedRequestId = null;
+                    elements.detailPanel.style.display = 'none';
+                }
             }
         } catch (error) {
             console.error('[Explorer v2] Error loading endpoints:', error);
@@ -117,7 +127,7 @@
     // Add or update a request in the table
     function addOrUpdateRequest(endpoint) {
         // Generate unique ID for this request
-        const requestId = `${endpoint.method}-${endpoint.url}-${endpoint.timestamp || Date.now()}`;
+        const requestId = endpoint.requestId || `${endpoint.method}-${endpoint.url}-${endpoint.timestamp || Date.now()}`;
 
         // Determine if this is a live or static endpoint
         const source = endpoint.response ? 'live' : (endpoint.source === 'live' ? 'live' : 'static');
@@ -149,7 +159,7 @@
     // Render a request row in the table
     function renderRequestRow(request) {
         // Check if row already exists
-        let row = document.querySelector(`tr[data-request-id="${request.id}"]`);
+        let row = Array.from(elements.requestTbody.rows).find(row => row.dataset.requestId === request.id);
 
         const isNewRow = !row;
 

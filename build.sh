@@ -50,8 +50,8 @@ check_tools() {
         print_status "  ✅ jq (JSON processing)"
         HAS_JQ=true
     else
-        print_warning "  ⚠️  jq not found - manifest processing may be limited"
-        HAS_JQ=false
+        print_error "jq is required to generate Chrome/Edge manifests"
+        exit 1
     fi
 }
 
@@ -79,6 +79,9 @@ copy_browser_files() {
     
     print_info "📋 Copying files to $target_dir..."
     
+    # Recreate generated files so removed source files cannot survive in packages.
+    rm -rf "$target_dir"
+
     # Create target directory structure
     mkdir -p "$target_dir"/{config,popup,utils,content,icons,docs}
 
@@ -134,19 +137,11 @@ create_chrome_manifest() {
             .action = .browser_action |
             del(.browser_action) |
             .host_permissions = [.permissions[] | select(test("^(<all_urls>|\\*|https?://|wss?://|file://|ftp://)"))] |
-            .permissions = ["storage", "activeTab", "scripting"] |
+            .permissions = ["storage", "activeTab", "scripting", "webRequest", "notifications"] |
             .web_accessible_resources = [{"resources": .web_accessible_resources, "matches": ["<all_urls>"]}]' \
             manifest.json > "$target_dir/manifest.json"
 
-    else
-        # Fallback: use manifest-v3.json if available
-        if [[ -f "manifest-v3.json" ]]; then
-            cp "manifest-v3.json" "$target_dir/manifest.json"
-        else
-            # Manual transformation
-            cp "manifest.json" "$target_dir/manifest.json"
-            print_warning "  ⚠️  Manual manifest transformation may be needed"
-        fi
+
     fi
 }
 
@@ -159,6 +154,7 @@ create_package() {
     print_info "📦 Creating package for $browser..."
     
     cd "$source_dir"
+    rm -f "$DIST_DIR/$package_name"
     zip -r "$DIST_DIR/$package_name" . > /dev/null 2>&1
     cd - > /dev/null
     
