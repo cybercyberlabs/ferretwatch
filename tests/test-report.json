@@ -2,16 +2,16 @@
   "metadata": {
     "extensionName": "Firefox Credential Scanner",
     "version": "2.3.5",
-    "testRunDate": "2026-10-02T10:39:29.120Z",
-    "testDuration": 1638,
-    "nodeVersion": "v24.19.0",
+    "testRunDate": "2026-10-02T10:45:58.709Z",
+    "testDuration": 1057,
+    "nodeVersion": "v20.19.5",
     "testFramework": "Custom TestFramework v1.0"
   },
   "summary": {
     "passed": 31,
     "failed": 0,
     "total": 31,
-    "executionTime": 1629,
+    "executionTime": 1041,
     "suiteResults": {
       "regression": {
         "passed": 16,
@@ -19,7 +19,7 @@
         "skipped": 0,
         "total": 16,
         "failures": [],
-        "executionTime": 82
+        "executionTime": 76
       },
       "integration": {
         "passed": 15,
@@ -27,7 +27,7 @@
         "skipped": 0,
         "total": 15,
         "failures": [],
-        "executionTime": 1547
+        "executionTime": 965
       }
     }
   },
@@ -39,14 +39,14 @@
       "skipped": 0,
       "total": 15,
       "failures": [],
-      "executionTime": 1547
+      "executionTime": 965
     },
     "performance": null,
     "overall": {
       "passed": 31,
       "failed": 0,
       "total": 31,
-      "executionTime": 1629,
+      "executionTime": 1041,
       "suiteResults": {
         "regression": {
           "passed": 16,
@@ -54,7 +54,7 @@
           "skipped": 0,
           "total": 16,
           "failures": [],
-          "executionTime": 82
+          "executionTime": 76
         },
         "integration": {
           "passed": 15,
@@ -62,7 +62,7 @@
           "skipped": 0,
           "total": 15,
           "failures": [],
-          "executionTime": 1547
+          "executionTime": 965
         }
       }
     },
@@ -72,18 +72,18 @@
       "skipped": 0,
       "total": 16,
       "failures": [],
-      "executionTime": 82
+      "executionTime": 76
     }
   },
   "performance": {
-    "averageTestTime": 52.54838709677419,
+    "averageTestTime": 33.58064516129032,
     "slowestSuite": {
       "name": "integration",
-      "time": 1547
+      "time": 965
     },
     "memoryUsage": {
-      "heapUsed": 14,
-      "heapTotal": 21,
+      "heapUsed": 12,
+      "heapTotal": 27,
       "external": 3
     }
   },
