@@ -99,6 +99,45 @@ body {
     display: block;
 }
 
+.monitor-status {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: #eaf7ee;
+    color: #1e6b3a;
+}
+
+.monitor-status[data-state="paused"],
+.monitor-status[data-state="whitelisted"] {
+    background: #fff4e5;
+    color: #8a4b08;
+}
+
+.monitor-status[data-state="checking"] {
+    background: #f4f5f6;
+    color: #495057;
+}
+
+.monitor-status p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.activity-text {
+    min-height: 1em;
+    margin: -4px 0 12px;
+    font-size: 12px;
+    color: #495057;
+}
+
+.activity-text:empty {
+    display: none;
+}
+
 .status {
     display: flex;
     align-items: center;
@@ -197,10 +236,18 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
     padding: 12px;
     background: #f8f9fa;
     border-radius: 6px;
     margin-bottom: 16px;
+}
+
+.domain-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
 }
 
 .domain-info {

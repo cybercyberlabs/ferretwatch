@@ -36,6 +36,10 @@ class BackgroundService {
         this.policyVersion = 0;
         this.pendingAlerts = new Map();
         this.alertTimers = new Map();
+        this.notifyCounts = new Map();
+        this.notifyTimers = new Map();
+        this.pausedHosts = new Set();
+        this.announcedCounts = new Map();
 
         this.init();
     }
@@ -60,11 +64,45 @@ class BackgroundService {
         this.nativeMonitor.install();
 
         // Load settings (Async)
-        this.ready = this.loadSettings().then(() => {
-// debugLog('✅ Background service worker ready');
-        });
+        this.pausedHosts = new Set();
+        this.ready = this.loadSettings().then(() => this.loadPausedHosts());
     }
 
+
+    async loadPausedHosts() {
+        try {
+            const session = (typeof browser !== 'undefined' ? browser : chrome).storage.session;
+            if (!session) return;
+            const stored = await session.get('pausedHosts');
+            this.pausedHosts = new Set(Array.isArray(stored.pausedHosts) ? stored.pausedHosts : []);
+        } catch (error) {
+            console.debug('Could not load temporary pauses:', error.message);
+        }
+    }
+
+    isPausedUrl(url) {
+        try {
+            return FerretWatchContracts.hostPaused(new URL(url).hostname, this.pausedHosts);
+        } catch (error) {
+            return false;
+        }
+    }
+
+    async setSitePause(host, paused) {
+        const name = String(host || '').trim().toLowerCase();
+        if (!name) return;
+        if (paused) this.pausedHosts.add(name);
+        else this.pausedHosts.delete(name);
+        try {
+            const session = (typeof browser !== 'undefined' ? browser : chrome).storage.session;
+            if (session) await session.set({ pausedHosts: [...this.pausedHosts] });
+        } catch (error) {
+            console.debug('Could not store temporary pause:', error.message);
+        }
+        this.policyVersion += 1;
+        this.nativeMonitor?.policyChanged();
+        await this.broadcastSettings();
+    }
 
     async loadSettings() {
         try {
@@ -119,8 +157,44 @@ class BackgroundService {
             const extensionPage = this.isExtensionSender(sender);
             await this.ready;
             switch (message.type) {
+                case 'SHOW_PAGE_ALERT': {
+                    const alertTab = sender.tab?.id;
+                    const count = Number(message.count);
+                    if (alertTab == null || !Number.isInteger(count) || count < 1) {
+                        sendResponse({ success: false });
+                        break;
+                    }
+                    if (this.isWhitelistedUrl(this.pageUrls.get(alertTab)) || this.isPausedUrl(this.pageUrls.get(alertTab))) {
+                        sendResponse({ success: false });
+                        break;
+                    }
+                    this.announceFindings(alertTab, count);
+                    sendResponse({ success: true });
+                    break;
+                }
+
                 case 'REGISTER_DOCUMENT':
-                    sendResponse(sender.tab ? this.documentContext(sender.tab.id) : null);
+                    sendResponse(sender.tab ? {
+                        ...this.documentContext(sender.tab.id),
+                        pausedHosts: [...this.pausedHosts]
+                    } : null);
+                    break;
+
+                case 'SET_SITE_PAUSE':
+                    if (!extensionPage) {
+                        sendResponse({ error: 'Only the extension popup can pause a site' });
+                        break;
+                    }
+                    await this.setSitePause(message.host, message.paused === true);
+                    sendResponse({ pausedHosts: [...this.pausedHosts] });
+                    break;
+
+                case 'GET_SITE_PAUSE':
+                    if (!extensionPage) {
+                        sendResponse({ pausedHosts: [] });
+                        break;
+                    }
+                    sendResponse({ pausedHosts: [...this.pausedHosts] });
                     break;
                 case 'SCAN_COMPLETE':
                 case 'SCAN_REPORT':
@@ -256,16 +330,16 @@ class BackgroundService {
         if (tabId == null || !scanData || !this.contextCurrent(tabId, scanData.context)) {
             return { accepted: false, reason: 'stale', state: 'unavailable', findings: [] };
         }
-        if (this.isWhitelistedUrl(this.pageUrls.get(tabId)) || this.settings?.diagnostics.scanning === false) {
+        if (this.isWhitelistedUrl(this.pageUrls.get(tabId)) || this.isPausedUrl(this.pageUrls.get(tabId)) ||
+            this.settings?.diagnostics.scanning === false) {
             return { accepted: false, state: 'skipped', findings: [] };
         }
         const report = this.findingStore.report(tabId, scanData.context.generation,
             scanData.findings || [], scanData.state || 'success');
         this.tabResults.set(tabId, report.findings);
         if (report.accepted && this.settings && (this.settings.enableNotifications || this.settings.showNotifications)) {
-            const fresh = (scanData.findings || []).filter((finding) => report.added.includes(finding.id || FerretWatchContracts.findingId(finding)));
-            const credentials = fresh.filter((finding) => finding.category !== 'cloudStorage' && (finding.riskLevel === 'critical' || finding.riskLevel === 'high'));
-            if (credentials.length > 0) this.queueAlert(tabId, credentials);
+            // The content script sends one desktop notification for the page's
+            // full finding set. Do not raise a second, smaller one from here.
         }
         await this.updateBadge(tabId, report.findings.length);
         return report;
@@ -700,7 +774,8 @@ class BackgroundService {
         for (const tab of await api.tabs.query({})) {
             try {
                 await api.tabs.sendMessage(tab.id, { type: 'SETTINGS_UPDATED',
-                    data: this.settings, context: this.documentContext(tab.id) });
+                    data: this.settings, pausedHosts: [...this.pausedHosts],
+                    context: this.documentContext(tab.id) });
             } catch (_) { /* A content script may not be loaded on this tab. */ }
         }
     }
@@ -772,6 +847,46 @@ class BackgroundService {
         this.alertTimers.set(tabId, setTimeout(() => this.flushAlert(tabId), 700));
     }
 
+    announceFindings(tabId, count) {
+        if (!Number.isInteger(count) || count < 1 || this.announcedCounts.has(tabId)) return;
+        const pending = this.notifyCounts.get(tabId) || 0;
+        if (count < pending) return;
+        // Later scans on the same page raise the total before anything is shown.
+        // One settled total becomes one system notification for this document.
+        if (count > pending) this.notifyCounts.set(tabId, count);
+        if (this.notifyTimers.has(tabId) && count === pending) return;
+        clearTimeout(this.notifyTimers.get(tabId));
+        this.notifyTimers.set(tabId, setTimeout(() => this.flushAnnounced(tabId), 2000));
+    }
+
+    flushAnnounced(tabId) {
+        clearTimeout(this.notifyTimers.get(tabId));
+        this.notifyTimers.delete(tabId);
+        if (this.announcedCounts.has(tabId)) {
+            this.notifyCounts.delete(tabId);
+            return;
+        }
+        const count = this.notifyCounts.get(tabId) || 0;
+        this.notifyCounts.delete(tabId);
+        if (count < 1) return;
+        this.announcedCounts.set(tabId, count);
+        this.showNotification({
+            type: 'credential_detected',
+            title: 'FerretWatch',
+            message: `${count} issue${count === 1 ? '' : 's'} found`,
+            notificationId: `ferretwatch-findings-${tabId}`
+        });
+    }
+
+    discardAlert(tabId) {
+        clearTimeout(this.alertTimers.get(tabId));
+        this.alertTimers.delete(tabId);
+        this.pendingAlerts.delete(tabId);
+        clearTimeout(this.notifyTimers.get(tabId));
+        this.notifyTimers.delete(tabId);
+        this.notifyCounts.delete(tabId);
+    }
+
     flushAlert(tabId) {
         clearTimeout(this.alertTimers.get(tabId));
         this.alertTimers.delete(tabId);
@@ -780,14 +895,16 @@ class BackgroundService {
         if (!pending.length) return;
         this.showNotification({
             type: 'credential_detected',
-            title: 'Credentials detected',
-            message: `Found ${pending.length} high-risk credential(s)`,
-            findings: pending
+            title: 'FerretWatch',
+            message: `${pending.length} issue${pending.length === 1 ? '' : 's'} found`,
+            findings: pending,
+            notificationId: `ferretwatch-findings-${tabId}`
         });
     }
 
     flushAlerts() {
         [...this.pendingAlerts.keys()].forEach((tabId) => this.flushAlert(tabId));
+        [...this.notifyTimers.keys()].forEach((tabId) => this.flushAnnounced(tabId));
     }
 
     async showNotification(notificationData) {
@@ -801,12 +918,12 @@ class BackgroundService {
         };
 
         try {
-            const notificationId = await chrome.notifications.create(options);
-
-            // Auto-clear notification after delay
-            setTimeout(() => {
-                chrome.notifications.clear(notificationId);
-            }, 5000);
+            const api = typeof browser !== 'undefined' ? browser : chrome;
+            const requestedId = notificationData.notificationId;
+            if (requestedId) await api.notifications.create(requestedId, options);
+            else await api.notifications.create(options);
+            // Do not clear this notification from code. On this desktop, clear()
+            // shows the same toast a second time a few seconds later.
 
         } catch (error) {
             console.error('Failed to show notification:', error);
@@ -857,7 +974,8 @@ class BackgroundService {
     }
 
     beginDocument(tabId, url) {
-        this.flushAlert(tabId);
+        this.discardAlert(tabId);
+        this.announcedCounts.delete(tabId);
         this.nativeMonitor?.cancelTab(tabId);
         this.findingStore.beginDocument(tabId);
         this.pageUrls.set(tabId, url);
@@ -948,7 +1066,8 @@ class BackgroundService {
         if (!text || !this.contextCurrent(tabId, context) ||
             this.settings.diagnostics.scanning === false ||
             this.settings.diagnostics.monitoring === false ||
-            this.isWhitelistedUrl(this.pageUrls.get(tabId) || pageUrl) || this.isWhitelistedUrl(meta.url)) return;
+            this.isWhitelistedUrl(this.pageUrls.get(tabId) || pageUrl) || this.isWhitelistedUrl(meta.url) ||
+            this.isPausedUrl(this.pageUrls.get(tabId) || pageUrl) || this.isPausedUrl(meta.url)) return;
         if (this.pendingScans >= FerretWatchContracts.CAPTURE_LIMITS.pendingScans) {
             await this.handleScanReport({ context, findings: [], state: 'truncated' }, tabId);
             return;
@@ -966,6 +1085,7 @@ class BackgroundService {
                 meta.state === 'truncated' || bounded.truncated || scanner.lastScanState === 'truncated'
                     ? 'truncated' : (scanner.lastScanState || 'failed');
             await this.handleScanReport({ context, findings, state }, tabId);
+            this.announceFindings(tabId, this.findingStore.list(tabId, false).length);
         } catch (_) {
             await this.handleScanReport({ context, findings: [], state: 'failed' }, tabId);
         } finally {

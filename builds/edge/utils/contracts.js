@@ -145,6 +145,14 @@ function hostMatchesWhitelist(hostname, entries) {
     });
 }
 
+function hostPaused(hostname, pausedHosts) {
+    if (!hostname || !pausedHosts) {
+        return false;
+    }
+    const host = String(hostname).toLowerCase();
+    return [...pausedHosts].some((entry) => String(entry || '').toLowerCase() === host);
+}
+
 function findingId(finding) {
     const raw = [
         finding.patternId || finding.type || '',
@@ -621,6 +629,7 @@ const FerretWatchContracts = {
     mergeSettings,
     migrateStoredSettings,
     hostMatchesWhitelist,
+    hostPaused,
     findingId,
     FindingStore,
     messageName,

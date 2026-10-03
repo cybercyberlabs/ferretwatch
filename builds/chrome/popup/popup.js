@@ -69,6 +69,13 @@ function setupButtonHandlers() {
         };
     }
 
+    const pauseBtn = document.getElementById('pauseBtn');
+    if (pauseBtn) {
+        pauseBtn.onclick = function () {
+            handlePause();
+        };
+    }
+
     // Whitelist button
     const whitelistBtn = document.getElementById('whitelistBtn');
     if (whitelistBtn) {
@@ -306,6 +313,39 @@ async function writeWhitelist(whitelistedDomains) {
     }).catch(() => {})));
 }
 
+async function handlePause() {
+    if (!currentTab || !currentTab.url) return;
+    let host = '';
+    try {
+        host = new URL(currentTab.url).hostname;
+    } catch (error) {
+        return;
+    }
+    const current = await browser.runtime.sendMessage({ type: 'GET_SITE_PAUSE' });
+    const paused = Array.isArray(current && current.pausedHosts) &&
+        current.pausedHosts.some((entry) => String(entry).toLowerCase() === host.toLowerCase());
+    const turningOff = !paused;
+    renderMonitorState({
+        host,
+        whitelisted: false,
+        paused: turningOff,
+        reloading: turningOff
+    });
+    await browser.runtime.sendMessage({ type: 'SET_SITE_PAUSE', host, paused: turningOff });
+    if (!turningOff) {
+        await updateWhitelistStatus();
+        return;
+    }
+    const tabId = currentTab.id;
+    const onReloaded = (updatedTabId, info) => {
+        if (updatedTabId !== tabId || info.status !== 'complete') return;
+        browser.tabs.onUpdated.removeListener(onReloaded);
+        updateWhitelistStatus();
+    };
+    browser.tabs.onUpdated.addListener(onReloaded);
+    await browser.tabs.reload(tabId);
+}
+
 async function handleWhitelist() {
     console.log('📝 Handling whitelist...');
 
@@ -508,7 +548,7 @@ async function exportData(format) {
             domain: url.hostname,
             url: currentTab.url,
             title: currentTab.title,
-            scannerVersion: '2.3.6',
+            scannerVersion: '2.3.7',
             findings: findings.map(f => ({
                 id: f.id || '',
                 type: f.type || 'Unknown',
@@ -772,11 +812,8 @@ async function copyToClipboard(text) {
         console.log('✅ Copied to clipboard:', text.substring(0, 50) + '...');
 
         // Show temporary feedback
-        const originalStatus = document.getElementById('statusText').textContent;
-        updateStatus('active', '📋 Copied to clipboard');
-        setTimeout(() => {
-            updateStatus('active', originalStatus);
-        }, 2000);
+        updateStatus('active', 'Copied to clipboard');
+        setTimeout(() => updateStatus('active', ''), 2000);
     } catch (error) {
         console.error('❌ Failed to copy to clipboard:', error);
 
@@ -890,20 +927,10 @@ async function updateWhitelistStatus() {
             return domain === d;
         });
 
-        const whitelistBtn = document.getElementById('whitelistBtn');
-        const domainInfo = document.getElementById('currentDomain');
-
-        if (isWhitelisted) {
-            whitelistBtn.textContent = 'Remove from Whitelist';
-            whitelistBtn.className = 'btn btn-small btn-success';
-            domainInfo.style.color = '#95a5a6';
-            updateStatus('warning', 'Scanner disabled for this domain');
-        } else {
-            whitelistBtn.textContent = 'Add to Whitelist';
-            whitelistBtn.className = 'btn btn-small';
-            domainInfo.style.color = '';
-            updateStatus('active', 'Scanner ready');
-        }
+        const pauseState = await browser.runtime.sendMessage({ type: 'GET_SITE_PAUSE' });
+        const isPaused = Array.isArray(pauseState && pauseState.pausedHosts) &&
+            pauseState.pausedHosts.some((entry) => String(entry).toLowerCase() === domain.toLowerCase());
+        renderMonitorState({ host: domain, whitelisted: isWhitelisted, paused: isPaused, reloading: false });
 
     } catch (error) {
         console.error('❌ Error updating whitelist status:', error);
@@ -920,14 +947,44 @@ async function updateWhitelistInfo() {
     }
 }
 
+function renderMonitorState({ host, whitelisted, paused, reloading }) {
+    const bar = document.getElementById('monitorStatus');
+    const dot = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const whitelistBtn = document.getElementById('whitelistBtn');
+    const rescanBtn = document.getElementById('rescanBtn');
+    const monitoringOff = whitelisted || paused;
+    let state = 'active';
+    let message = `Monitoring is on for ${host}.`;
+    if (whitelisted) {
+        state = 'whitelisted';
+        message = `Monitoring is off for ${host}. This site is whitelisted until you remove it.`;
+    } else if (reloading) {
+        state = 'paused';
+        message = `Monitoring is off for ${host}. Reloading the page.`;
+    } else if (paused) {
+        state = 'paused';
+        message = `Monitoring is off for ${host} until you resume or restart Firefox.`;
+    }
+    if (bar) bar.dataset.state = state;
+    if (dot) dot.className = `status-dot ${state === 'active' ? 'active' : 'warning'}`;
+    if (text) text.textContent = message;
+    if (pauseBtn) {
+        pauseBtn.disabled = whitelisted || reloading;
+        pauseBtn.textContent = paused ? 'Resume on this site' : 'Pause on this site';
+    }
+    if (whitelistBtn) {
+        whitelistBtn.textContent = whitelisted ? 'Remove from Whitelist' : 'Add to Whitelist';
+        whitelistBtn.className = whitelisted ? 'btn btn-small btn-success' : 'btn btn-small';
+    }
+    if (rescanBtn) rescanBtn.disabled = monitoringOff || reloading;
+}
+
 function updateStatus(type, message) {
-    const statusDot = document.getElementById('statusDot');
-    const statusText = document.getElementById('statusText');
-
-    if (statusDot) statusDot.className = `status-dot ${type}`;
-    if (statusText) statusText.textContent = message;
-
-    console.log(`📊 Status: ${type} - ${message}`);
+    const activity = document.getElementById('activityText');
+    if (activity) activity.textContent = message;
+    console.log(`Status: ${type} - ${message}`);
 }
 
 async function loadCurrentFindings() {

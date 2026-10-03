@@ -35,7 +35,7 @@ async function load(root = ROOT, initial = {}, worker = false) {
             get: async id => ({ id, url: 'https://site.invalid/' }),
             sendMessage: async (id, message) => { tabMessages.push({ id, ...message }); } },
         browserAction: { setBadgeText: async () => {}, setBadgeBackgroundColor: async () => {} },
-        notifications: { create: async value => { notices.push(value); return 'n'; }, clear: async () => {} },
+        notifications: { create: async (a, b) => { notices.push(b && typeof b === 'object' ? b : a); return typeof a === 'string' ? a : 'n'; }, clear: async () => {} },
         webRequest: { filterResponseData(id) {
             const filter = { writes: [], closed: false, disconnected: false,
                 write(buffer) { this.writes.push(buffer); }, close() { this.closed = true; },
@@ -100,10 +100,31 @@ testFramework.test('manifest background detects response secrets and notifies wi
     r.finish(bytes); await h.flush();
     assert.equal(h.bg.findingStore.list(1, false)[0].value, SECRET);
     assert.equal(h.notices.length, 1);
+    assert.equal(h.notices[0].message, '1 issue found');
+    request(h, 'again').finish('{"ok":true}');
+    await h.flush();
+    assert.equal(h.notices.length, 1, 'a later response does not raise the same notification');
+    h.bg.announceFindings(1, 2);
+    h.bg.announceFindings(1, 3);
+    await h.flush();
+    assert.equal(h.notices.length, 1, 'a higher total after the notification was shown does not pop again');
     assert.ok(h.manifest.permissions.includes('notifications'));
     assert.strictEqual(r.filter.writes[0], bytes, 'forward the identical original buffer');
     assert.ok(r.filter.closed);
     assert.ok(!h.api.webRequest.onBeforeSendHeaders.extra.includes('blocking'));
+});
+
+testFramework.test('system notification is shown once for the settled total', async () => {
+    const h = await load();
+    h.bg.announceFindings(1, 1);
+    h.bg.announceFindings(1, 2);
+    h.bg.announceFindings(1, 3);
+    await h.flush();
+    assert.equal(h.notices.length, 1);
+    assert.equal(h.notices[0].message, '3 issues found');
+    h.bg.announceFindings(1, 4);
+    await h.flush();
+    assert.equal(h.notices.length, 1, 'later totals do not open another system notification');
 });
 
 testFramework.test('Explorer receives live request IDs, bounded bodies, headers, status and invalidations', async () => {
@@ -296,6 +317,21 @@ testFramework.test('popup retains known findings when some scan sources are unav
     vm.runInContext(source.slice(start, end), ctx);
     await vm.runInContext('loadCurrentFindings()', ctx);
     assert.equal(displayed[0].value, SECRET);
+});
+
+testFramework.test('temporary pause stops capture and does not whitelist the host', async () => {
+    const h = await load();
+    const paused = await h.message({ type: 'SET_SITE_PAUSE', host: 'site.invalid', paused: true });
+    assert.equal(JSON.stringify(paused.pausedHosts), JSON.stringify(['site.invalid']));
+    request(h, 'while-paused').finish(JSON.stringify({ token: SECRET }));
+    await h.flush();
+    assert.equal(h.bg.findingStore.list(1, false).length, 0, 'paused host is not scanned');
+    const domains = h.data.settings && h.data.settings.whitelistedDomains;
+    assert.ok(!domains || domains.indexOf('site.invalid') === -1, 'pause is not stored in the permanent whitelist');
+    await h.message({ type: 'SET_SITE_PAUSE', host: 'site.invalid', paused: false });
+    request(h, 'after-resume').finish(JSON.stringify({ token: SECRET }));
+    await h.flush();
+    assert.equal(h.bg.findingStore.list(1, false)[0].value, SECRET, 'monitoring resumes without a reload');
 });
 
 module.exports = { testFramework, load, request, SECRET };

@@ -188,10 +188,7 @@ class ProgressiveScanner {
                 sourceKind: source.kind
             });
             findings.push(...part);
-            if (this.pastScanDeadline(options)) {
-                this.inspectionTruncated = true;
-                break;
-            }
+            await this.paceScan(options);
         }
         return findings;
     }
@@ -217,6 +214,16 @@ class ProgressiveScanner {
         const budget = (options && options.scanTimeMs) ||
             (typeof FerretWatchContracts !== 'undefined' ? FerretWatchContracts.CAPTURE_LIMITS.scanTimeMs : 250);
         return (performance.now() - this.scanStartTime) > budget;
+    }
+
+    /**
+     * The time budget keeps a large page responsive. It must not discard
+     * patterns that have not run yet.
+     */
+    async paceScan(options) {
+        if (!this.pastScanDeadline(options)) return;
+        await this.yieldControl();
+        this.scanStartTime = performance.now();
     }
 
     applyFindingLimit(findings) {
@@ -285,11 +292,7 @@ class ProgressiveScanner {
             : 200);
 
         for (const patternConfig of patterns) {
-            // Check between patterns as well as sources.
-            if (this.pastScanDeadline(options)) {
-                this.inspectionTruncated = true;
-                break;
-            }
+            await this.paceScan(options);
             if (this.abortController?.signal.aborted) {
                 break;
             }

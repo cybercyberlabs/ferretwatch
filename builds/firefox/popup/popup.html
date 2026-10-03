@@ -18,6 +18,12 @@
 
         <div class="content">
 
+            <div id="monitorStatus" class="monitor-status" data-state="checking">
+                <span class="status-dot" id="statusDot"></span>
+                <p id="statusText">Checking whether monitoring is on for this site.</p>
+            </div>
+            <p id="activityText" class="activity-text"></p>
+
             <div class="controls">
                 <button class="btn btn-primary" id="rescanBtn">
                     <span class="btn-icon">🔄</span>
@@ -38,7 +44,10 @@
                 <div class="domain-info">
                     <strong>Domain:</strong> <span id="currentDomain">loading...</span>
                 </div>
-                <button class="btn btn-small" id="whitelistBtn">Add to Whitelist</button>
+                <div class="domain-actions">
+                    <button class="btn btn-small" id="pauseBtn">Pause this visit</button>
+                    <button class="btn btn-small" id="whitelistBtn">Add to Whitelist</button>
+                </div>
             </div>
 
             <!-- Findings Display Section -->

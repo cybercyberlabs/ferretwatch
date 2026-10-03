@@ -144,6 +144,8 @@
      * @param {string} risk - Risk level (critical, high, medium, low)
      */
     function showNotification(content, risk = 'medium') {
+        // A click or the auto-hide ends the alert for this document.
+        if (notificationDismissed) return;
         // One popup per page. Later findings update it in place instead of starting another alert.
         let notification = document.querySelector('.cyber-labs-credential-notification');
         const created = !notification;
@@ -226,6 +228,7 @@
 
         clearTimeout(notification._fwDismissTimer);
         notification._fwDismissTimer = setTimeout(() => {
+            notificationDismissed = true;
             if (notification.parentNode) {
                 notification.style.animation = 'slideOutRight 0.3s ease-in forwards';
                 setTimeout(() => {
@@ -313,7 +316,7 @@
         }[highestRisk] || '📋';
 
         const total = allRegularFindings.length;
-        const notificationTitle = `${total} Credential${total === 1 ? '' : 's'} Found`;
+        const notificationTitle = `${total} issue${total === 1 ? '' : 's'} found`;
         const displayFindings = allRegularFindings.slice(0, 3);
         const moreCount = Math.max(0, total - displayFindings.length);
 

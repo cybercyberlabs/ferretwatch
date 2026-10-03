@@ -57,7 +57,8 @@ class NativeResponseMonitor {
         const pageUrl = s.pageUrls.get(details.tabId) || details.documentUrl || details.originUrl;
         return Number.isInteger(details.tabId) && details.tabId >= 0 && !!s.settings &&
             s.settings.diagnostics.monitoring !== false &&
-            !s.isWhitelistedUrl(pageUrl) && !s.isWhitelistedUrl(details.url);
+            !s.isWhitelistedUrl(pageUrl) && !s.isWhitelistedUrl(details.url) &&
+            !s.isPausedUrl(pageUrl) && !s.isPausedUrl(details.url);
     }
 
     current(record) {

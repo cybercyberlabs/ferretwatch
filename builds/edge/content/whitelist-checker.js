@@ -11,6 +11,7 @@
 
     // State
     let whitelistedDomains = [];
+    let pausedHosts = [];
     const currentDomain = window.location.hostname;
 
     /**
@@ -40,6 +41,18 @@
      * Check if current domain is whitelisted
      * @returns {boolean} True if domain is whitelisted
      */
+    function setPausedHosts(hosts) {
+        pausedHosts = Array.isArray(hosts) ? hosts : [];
+    }
+
+    function isTemporarilyPaused() {
+        const contracts = globalThis.FerretWatchContracts || window.FerretWatchContracts;
+        if (contracts && contracts.hostPaused) {
+            return contracts.hostPaused(currentDomain, pausedHosts);
+        }
+        return pausedHosts.some((host) => String(host).toLowerCase() === currentDomain.toLowerCase());
+    }
+
     function isDomainWhitelisted() {
         const contracts = globalThis.FerretWatchContracts || window.FerretWatchContracts;
         if (contracts) {
@@ -81,6 +94,8 @@
     // Expose public API
     window.FerretWatchWhitelist = {
         loadWhitelist,
+        setPausedHosts,
+        isTemporarilyPaused,
         isDomainWhitelisted,
         getCurrentDomain,
         getWhitelistedDomains

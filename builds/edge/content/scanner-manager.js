@@ -18,6 +18,7 @@
     // Get whitelist checker
     const whitelistChecker = window.FerretWatchWhitelist || {};
     const isDomainWhitelisted = whitelistChecker.isDomainWhitelisted || function() { return false; };
+    const isTemporarilyPaused = whitelistChecker.isTemporarilyPaused || function() { return false; };
     const getCurrentDomain = whitelistChecker.getCurrentDomain || function() { return window.location.hostname; };
 
     // Get notification system
@@ -71,7 +72,8 @@
     const dismissedIds = new Set();
     let alertTimer = null;
     let alertBurst = [];
-    let alertAll = [];
+    let alertGeneration = null;
+    const knownFindings = [];
 
     /**
      * Load settings from storage into cache
@@ -135,15 +137,20 @@
         });
 
         if (newFindings.length > 0) {
-            const criticalCount = newFindings.filter(f => f.riskLevel === 'critical').length;
-            const highCount = newFindings.filter(f => f.riskLevel === 'high').length;
-            const mediumCount = newFindings.filter(f => f.riskLevel === 'medium').length;
-            if (criticalCount > 0 || highCount > 0) {
-                console.warn(`🚨 SECURITY ALERT: Found ${criticalCount + highCount} high-risk issue(s) on ${window.location.hostname}`);
-            } else if (mediumCount > 0) {
-                console.warn(`⚠️ Found ${mediumCount} medium-risk issue(s) on ${window.location.hostname}`);
+            const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+            newFindings.forEach((finding) => {
+                const level = Object.prototype.hasOwnProperty.call(counts, finding.riskLevel) ? finding.riskLevel : 'low';
+                counts[level] += 1;
+            });
+            const parts = ['critical', 'high', 'medium', 'low']
+                .filter((level) => counts[level] > 0)
+                .map((level) => `${counts[level]} ${level}`);
+            const noun = newFindings.length === 1 ? 'issue' : 'issues';
+            const summary = `Found ${newFindings.length} ${noun} on ${window.location.hostname}: ${parts.join(', ')}`;
+            if (counts.critical || counts.high || counts.medium) {
+                console.warn(`FerretWatch 🚨 SECURITY ALERT: ${summary}`);
             } else {
-                console.log(`ℹ️ Found ${newFindings.length} low-risk issue(s) on ${window.location.hostname}`);
+                console.log(`FerretWatch ℹ️ ${summary}`);
             }
             newFindings.forEach((finding) => {
                 const riskEmoji = {
@@ -154,34 +161,42 @@
                 }[finding.riskLevel] || '❓';
                 if (finding.bucketInfo) {
                     const accessStatus = finding.accessStatus || finding.bucketInfo.accessStatus || 'untested';
-                    console.warn(`${riskEmoji} [${finding.riskLevel?.toUpperCase()}] ${finding.type}: ${finding.value} (${accessStatus})`);
+                    console.warn(`FerretWatch ${riskEmoji} [${finding.riskLevel?.toUpperCase()}] ${finding.type}: ${finding.value} (${accessStatus})`);
                 } else {
-                    console.warn(`${riskEmoji} [${finding.riskLevel?.toUpperCase()}] ${finding.type}: ${finding.value}`);
+                    console.warn(`FerretWatch ${riskEmoji} [${finding.riskLevel?.toUpperCase()}] ${finding.type}: ${finding.value}`);
                 }
             });
         }
 
-        // One popup for a burst of scans. Repeat reports of the same findings do not alert again.
-        const notifiableNewFindings = newFindings.filter(f => (f.riskLevel || 'medium') !== 'low');
-        if (notifiableNewFindings.length === 0) {
-            debugLog("Same findings detected (notification dismissed - check console for details)");
+        // One popup for every finding on the page. A later smaller scan must not
+        // replace the set already discovered in this document.
+        rememberFindings(findings);
+        if (newFindings.length === 0) {
+            debugLog("Same findings detected (notification already shown)");
             return;
         }
-        notifiableNewFindings.forEach((finding) => {
+        newFindings.forEach((finding) => {
             const key = `${finding.type}:${finding.value}`;
             if (!alertBurst.some((existing) => `${existing.type}:${existing.value}` === key)) {
                 alertBurst.push(finding);
             }
         });
-        alertAll = findings.filter(f => (f.riskLevel || 'medium') !== 'low');
         clearTimeout(alertTimer);
         alertTimer = setTimeout(showCoalescedAlert, 700);
+    }
 
-        // Log info about low-risk findings that are excluded from popup
-        const lowRiskNewFindings = newFindings.filter(f => (f.riskLevel || 'medium') === 'low');
-        if (lowRiskNewFindings.length > 0) {
-            debugLog(`${lowRiskNewFindings.length} low-risk finding(s) detected (informational only - not shown in popup)`);
-        }
+    function findingKey(finding) {
+        return `${finding.type}:${finding.value}`;
+    }
+
+    function rememberFindings(findings) {
+        (findings || []).forEach((finding) => {
+            if (!finding || finding.value == null) return;
+            const key = findingKey(finding);
+            if (!knownFindings.some((existing) => findingKey(existing) === key)) {
+                knownFindings.push(finding);
+            }
+        });
     }
 
     /**
@@ -218,29 +233,27 @@
     function showCoalescedAlert() {
         alertTimer = null;
         const fresh = alertBurst.splice(0);
-        const current = alertAll;
-        alertAll = [];
-        if (!fresh.length) return;
-        const freshBuckets = fresh.filter(f => f.bucketInfo);
-        const freshRegular = fresh.filter(f => !f.bucketInfo);
-        const allBuckets = current.filter(f => f.bucketInfo);
-        const allRegular = current.filter(f => !f.bucketInfo);
-        if (allBuckets.length > 0 && showBucketNotification) {
-            showBucketNotification(allBuckets, freshBuckets);
-        }
-        if (allRegular.length > 0 && showRegularNotification) {
-            showRegularNotification(allRegular, freshRegular);
-        }
+        if (notifications.isNotificationDismissed && notifications.isNotificationDismissed()) return;
+        if (!fresh.length || !knownFindings.length || !showRegularNotification) return;
+        showRegularNotification(knownFindings.slice(), fresh);
+        api.runtime.sendMessage({
+            type: 'SHOW_PAGE_ALERT',
+            count: knownFindings.length
+        }).catch(() => {});
     }
 
     function setDocumentContext(context) {
+        if (context && context.generation !== alertGeneration) {
+            alertGeneration = context.generation;
+            if (notifications.resetNotificationDismissed) notifications.resetNotificationDismissed();
+        }
         documentContext = context;
         lastScanResults = [];
         lastScanState = 'pending';
         window.lastScanResults = [];
         seenCredentials.clear();
         alertBurst = [];
-        alertAll = [];
+        knownFindings.splice(0);
         clearTimeout(alertTimer);
         alertTimer = null;
     }
@@ -252,7 +265,7 @@
     function canScan() {
         const storage = storageUtils();
         const scanning = storage ? storage.getSetting('diagnostics', {}).scanning : true;
-        return documentContext && !isDomainWhitelisted() && scanning !== false;
+        return documentContext && !isDomainWhitelisted() && !isTemporarilyPaused() && scanning !== false;
     }
 
     async function reportScan(findings, state, context) {
@@ -292,6 +305,9 @@
             const findings = await operation.progressiveScan(text, collectPatterns(), {
                 sourceUrl: window.location.href, sourceKind: 'dom', skipBucketProbes: true, ...options
             });
+            // Remember this scan's own matches before the background echoes a
+            // possibly smaller merged list.
+            rememberFindings(findings);
             return await reportScan(findings,
                 options.truncated ? 'truncated' : (operation.lastScanState || 'success'), context);
         } catch (error) {
@@ -328,8 +344,8 @@
 
             await loadSettings(); // Load settings into cache
 
-            if (isDomainWhitelisted()) {
-                debugLog('[FW Content] FerretWatch disabled for whitelisted domain:', currentDomain);
+            if (isDomainWhitelisted() || isTemporarilyPaused()) {
+                debugLog('[FW Content] FerretWatch disabled for this domain:', currentDomain);
                 lastScanState = 'skipped';
                 lastScanResults = [];
                 return;

@@ -57,6 +57,7 @@
             if (typeof ProgressiveScanner !== 'undefined') {
                 scannerInstance = new ProgressiveScanner();
                 scanner.setScanner(scannerInstance);
+                startDomObserver();
 
                 // Initialize the scanner (load settings and run scan if not whitelisted)
                 await scanner.initializeScanner();
@@ -223,7 +224,9 @@
         // Register immediately at document_start; later async scans keep this token.
         const registration = api.runtime.sendMessage({ type: 'REGISTER_DOCUMENT' });
         initMessageHandlers();
-        scanner.setDocumentContext(await registration);
+        const registered = await registration;
+        if (whitelist.setPausedHosts) whitelist.setPausedHosts(registered && registered.pausedHosts);
+        scanner.setDocumentContext(registered);
         await injectInterceptorEarly();
 
         // 3. Initialize scanner when DOM is ready
@@ -247,6 +250,7 @@
         if (domObserver) { domObserver.stop(); domObserver = null; }
         scanner.setDocumentContext(null); // Invalidate in-flight scans immediately.
         if (storageUtils()) storageUtils().applySettings(message.data);
+        if (whitelist.setPausedHosts) whitelist.setPausedHosts(message.pausedHosts);
         if (whitelist.loadWhitelist) await whitelist.loadWhitelist();
         if (revision !== policyRevision) return;
         scanner.setDocumentContext(message.context);
@@ -256,6 +260,7 @@
 
     function applyMonitoringPolicy() {
         monitoringStopped = (whitelist.isDomainWhitelisted && whitelist.isDomainWhitelisted()) ||
+            (whitelist.isTemporarilyPaused && whitelist.isTemporarilyPaused()) ||
             (storageUtils() && storageUtils().getSetting('diagnostics', {}).scanning === false);
         if (monitoringStopped) {
             if (domObserver) { domObserver.stop(); domObserver = null; }
@@ -266,7 +271,8 @@
 
     function startDomObserver() {
         if (monitoringStopped || domObserver || !document.documentElement || !scannerInstance) return;
-        if (whitelist.isDomainWhitelisted?.() || (storageUtils() && storageUtils().getSetting('diagnostics', {}).scanning === false)) return;
+        if (whitelist.isDomainWhitelisted?.() || whitelist.isTemporarilyPaused?.() ||
+            (storageUtils() && storageUtils().getSetting('diagnostics', {}).scanning === false)) return;
         const DomMonitor = globalThis.FerretWatchDomMonitor || window.FerretWatchDomMonitor;
         if (!DomMonitor) return;
         domObserver = new DomMonitor(

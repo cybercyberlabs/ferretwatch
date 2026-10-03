@@ -120,6 +120,23 @@ testFramework.test('progressive scan attributes visible, attribute, script, and 
     Assert.equal(json.find((finding) => finding.value === STRIPE).sourceUrl, 'https://example.com/api', 'response url');
 });
 
+testFramework.test('a short time budget still scans later patterns', async () => {
+    installScannerSettings({ enabled: false });
+    const scanner = new ProgressiveScanner();
+    const mongo = 'mongodb://username:password@cluster.mongodb.net/myapp';
+    const aws = 'AKIAIOSFODNN7EXAMPLE';
+    const bucket = 'https://github-cloud.s3.amazonaws.com/object';
+    const findings = await scanner.progressiveScan(
+        `${aws}\n${mongo}\n${bucket}`,
+        patterns.patternManager.getAllPatterns(),
+        { sourceKind: 'response', sourceUrl: 'https://example.com/readme', scanTimeMs: -1 }
+    );
+    Assert.true(findings.some((finding) => finding.value === mongo), 'mongodb pattern still runs');
+    Assert.true(findings.some((finding) => finding.value === aws), 'aws pattern still runs');
+    Assert.true(findings.some((finding) => String(finding.value).includes('github-cloud')), 'later bucket pattern still runs');
+    Assert.equal(scanner.lastScanState, 'success', 'pausing for time is not a truncated scan');
+});
+
 testFramework.test('low and medium patterns are not dropped from the complete scan', async () => {
     installScannerSettings({ enabled: false });
     const scanner = new ProgressiveScanner();
@@ -194,6 +211,12 @@ testFramework.test('settings migration keeps user choices and ignores invented c
     Assert.equal(migrated.enabledCategories.slack, undefined, 'unknown category dropped');
     Assert.true(migrated.enabledCategories.github, 'real category defaulted');
     Assert.false(migrated.diagnostics.pageInterceptor, 'page wrapper stays off');
+});
+
+testFramework.test('temporary pause matches only the exact host', () => {
+    Assert.true(contracts.hostPaused('github.com', ['github.com']), 'paused host');
+    Assert.false(contracts.hostPaused('gist.github.com', ['github.com']), 'subdomain stays active');
+    Assert.false(contracts.hostPaused('github.com', []), 'empty pause list');
 });
 
 testFramework.test('whitelist matches exact hosts and subdomains', () => {
@@ -360,9 +383,15 @@ testFramework.test('one page alert lists every finding from the README, includin
         if (node.textContent) texts.push(node.textContent);
         node.children.forEach(walk);
     })(popups[0]);
-    Assert.ok(texts.some((text) => text.includes('2 Credentials Found')), 'title counts every finding');
+    Assert.ok(texts.some((text) => text.includes('2 issues found')), 'title counts every finding');
     Assert.equal(texts.filter((text) => text === 'MongoDB Connection String' || text === 'AWS Access Key ID').length, 2, 'both distinct findings stay listed');
     Assert.ok(texts.some((text) => text.includes('mongodb://username:password@cluster.mongodb.net/myapp')), 'alert shows the full match');
+    popups[0].listeners.click();
+    Assert.true(notes.isNotificationDismissed(), 'click dismisses the alert for this document');
+    popups[0].remove();
+    notes.showRegularNotification(found, found);
+    const visible = document.querySelectorAll('.cyber-labs-credential-notification').filter((node) => node.parentNode);
+    Assert.equal(visible.length, 0, 'dismissed alert does not return');
 });
 
 testFramework.test('page monitoring source does not wrap fetch for normal operation', () => {
