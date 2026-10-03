@@ -41,8 +41,9 @@
      * @returns {boolean} True if domain is whitelisted
      */
     function isDomainWhitelisted() {
-        if (window.FerretWatchContracts) {
-            return window.FerretWatchContracts.hostMatchesWhitelist(currentDomain, whitelistedDomains);
+        const contracts = globalThis.FerretWatchContracts || window.FerretWatchContracts;
+        if (contracts) {
+            return contracts.hostMatchesWhitelist(currentDomain, whitelistedDomains);
         }
         return whitelistedDomains.some(domain => {
             if (domain.startsWith('*.')) {

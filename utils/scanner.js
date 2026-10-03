@@ -2,6 +2,17 @@
  * Performance-optimized scanning engine with progressive scanning
  */
 
+function trimCapturedSecret(value) {
+    if (value == null) return '';
+    let text = String(value).trim();
+    let previous;
+    do {
+        previous = text;
+        text = text.replace(/(?:\\[nrt])+$/i, '').trim();
+    } while (text !== previous);
+    return text;
+}
+
 class ProgressiveScanner {
     constructor() {
         this.scanInProgress = false;
@@ -299,9 +310,10 @@ class ProgressiveScanner {
                     if (findings.length >= maxFindings) {
                         break;
                     }
-                    
-                    // Validate the match
-                    if (this.isValidSecret(matchObj.value, patternConfig)) {
+                    const capturedValue = trimCapturedSecret(matchObj.value);
+                    if (!capturedValue || !this.isValidSecret(capturedValue, patternConfig)) {
+                        continue;
+                    }
                         // Extract context around the match (50 chars before and after)
                         const contextStart = Math.max(0, matchObj.index - 50);
                         const contextEnd = Math.min(content.length, matchObj.index + matchObj.value.length + 50);
@@ -319,7 +331,7 @@ class ProgressiveScanner {
                             .trim();
                         
                         const finding = {
-                            value: matchObj.value,
+                            value: capturedValue,
                             type: patternConfig.type || patternConfig.description,
                             patternId: patternConfig.id || patternConfig.type || patternConfig.description,
                             riskLevel: patternConfig.risk || patternConfig.riskLevel,
@@ -363,7 +375,6 @@ class ProgressiveScanner {
                         }
                         
                         findings.push(finding);
-                    }
                 }
                 
                 // Yield control periodically to prevent blocking

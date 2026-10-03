@@ -51,7 +51,7 @@ Public-access probes for discovered buckets are optional and off when `testPubli
 - **Smart Notifications**: Only notifies about new credentials; dismissed notifications stay dismissed
 - **Domain Whitelist**: Permanently disable scanning for specific domains and subdomains
 - **Export Functionality**: Export findings in JSON or CSV format with unmasked values for security analysis
-- **Detailed Console Logging**: Full findings with masked values for security
+- **Detailed Console Logging**: Full findings, including the matched value, are written to the console
 - **Automatic scanning**: Page content, later DOM updates, scripts, and supported text responses are scanned without opening the popup
 - **Privacy-Focused**: Secret matching runs locally. Bucket public-access probes, when enabled, contact the bucket host
 
@@ -165,7 +165,7 @@ You can modify the detection patterns in `config/patterns.js` by editing the `DE
 ## Privacy & Security
 - **No telemetry**: Findings are not uploaded
 - **Bucket probes and explicit replay** are the only extension-initiated requests, and replay never substitutes a different tab
-- **Masked Console Logging**: Page notifications and automatic logs mask secret values. Copy and export in the extension UI return the original value
+- **Visible findings**: Page alerts and console logs show the matched value so the finding can be identified. Export still returns the original value
 - **Unmasked Exports**: Export files contain full credential values for analysis purposes
 - **Local Processing Only**: Your browsing data stays on your device
 - **Secure Export Handling**: Delete exported files after analysis to prevent credential exposure

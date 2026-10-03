@@ -37,7 +37,11 @@
     let monitoringStopped = false;
 
     function contracts() {
-        return window.FerretWatchContracts || null;
+        return globalThis.FerretWatchContracts || window.FerretWatchContracts || null;
+    }
+
+    function storageUtils() {
+        return globalThis.StorageUtils || window.StorageUtils || null;
     }
 
     function currentPageUrl() {
@@ -71,8 +75,8 @@
         try {
             debugLog('[FW Content] Early initialization at document_start');
 
-            if (window.StorageUtils && window.StorageUtils.ensureSettings) {
-                await window.StorageUtils.ensureSettings();
+            if (storageUtils() && storageUtils().ensureSettings) {
+                await storageUtils().ensureSettings();
             }
 
             // Load whitelist first
@@ -86,8 +90,8 @@
                 return;
             }
 
-            const diagnostics = window.StorageUtils && window.StorageUtils.getSetting
-                ? window.StorageUtils.getSetting('diagnostics', {})
+            const diagnostics = storageUtils() && storageUtils().getSetting
+                ? storageUtils().getSetting('diagnostics', {})
                 : {};
             if (!diagnostics || diagnostics.pageInterceptor !== true) {
                 debugLog('[FW Content] Page interceptor disabled; monitoring uses webRequest');
@@ -242,7 +246,7 @@
         const revision = ++policyRevision;
         if (domObserver) { domObserver.stop(); domObserver = null; }
         scanner.setDocumentContext(null); // Invalidate in-flight scans immediately.
-        window.StorageUtils.applySettings(message.data);
+        if (storageUtils()) storageUtils().applySettings(message.data);
         if (whitelist.loadWhitelist) await whitelist.loadWhitelist();
         if (revision !== policyRevision) return;
         scanner.setDocumentContext(message.context);
@@ -252,7 +256,7 @@
 
     function applyMonitoringPolicy() {
         monitoringStopped = (whitelist.isDomainWhitelisted && whitelist.isDomainWhitelisted()) ||
-            window.StorageUtils.getSetting('diagnostics', {}).scanning === false;
+            (storageUtils() && storageUtils().getSetting('diagnostics', {}).scanning === false);
         if (monitoringStopped) {
             if (domObserver) { domObserver.stop(); domObserver = null; }
             return;
@@ -262,8 +266,10 @@
 
     function startDomObserver() {
         if (monitoringStopped || domObserver || !document.documentElement || !scannerInstance) return;
-        if (whitelist.isDomainWhitelisted?.() || window.StorageUtils.getSetting('diagnostics', {}).scanning === false) return;
-        domObserver = new window.FerretWatchDomMonitor(
+        if (whitelist.isDomainWhitelisted?.() || (storageUtils() && storageUtils().getSetting('diagnostics', {}).scanning === false)) return;
+        const DomMonitor = globalThis.FerretWatchDomMonitor || window.FerretWatchDomMonitor;
+        if (!DomMonitor) return;
+        domObserver = new DomMonitor(
             (text, options) => scanner.runScanText(text, options), document.documentElement);
     }
 
@@ -275,7 +281,7 @@
     window.addEventListener('pageshow', async event => {
         if (!event.persisted) return;
         scanner.setDocumentContext(await api.runtime.sendMessage({ type: 'REGISTER_DOCUMENT' }));
-        await window.StorageUtils.ensureSettings();
+        if (storageUtils()) await storageUtils().ensureSettings();
         await whitelist.loadWhitelist();
         applyMonitoringPolicy();
         if (!monitoringStopped) await scanner.runScan();

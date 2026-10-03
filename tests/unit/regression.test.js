@@ -301,6 +301,70 @@ testFramework.test('bucket enrichment waits for tester initialization and runs o
     delete global.BucketParser;
 });
 
+testFramework.test('one page alert lists every finding from the README, including repeated sources', async () => {
+    const vm = require('vm');
+    const readme = fs.readFileSync(path.join(__dirname, '../../README.md'), 'utf8');
+    const html = `<html><body><article>${readme}</article><script type="application/json">${JSON.stringify({ readme })}</script></body></html>`;
+    const scanner = new ProgressiveScanner();
+    const found = await scanner.progressiveScan(html, patterns.patternManager.getAllPatterns(), {
+        sourceUrl: 'https://github.com/cybercyberlabs/ferretwatch'
+    });
+    Assert.equal(found.length, 2, 'trailing script escapes do not create a second mongo finding');
+    Assert.ok(found.some((finding) => finding.value === 'mongodb://username:password@cluster.mongodb.net/myapp'), 'mongo value is trimmed');
+    Assert.ok(found.some((finding) => finding.value === 'AKIAIOSFODNN7EXAMPLE'), 'aws key kept');
+    Assert.false(found.some((finding) => /\\n/.test(finding.value)), 'no escaped newline remains in a value');
+
+    const elements = [];
+    function makeElement(tag) {
+        const node = {
+            tagName: tag, id: '', className: '', style: {}, children: [], parentNode: null, listeners: {},
+            appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
+            replaceChildren() { this.children.forEach((child) => { child.parentNode = null; }); this.children = []; },
+            addEventListener(type, fn) { this.listeners[type] = fn; },
+            remove() {
+                if (this.parentNode) this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
+                this.parentNode = null;
+            },
+            set textContent(value) { this._text = String(value); },
+            get textContent() { return this._text || ''; }
+        };
+        elements.push(node);
+        return node;
+    }
+    const document = {
+        body: makeElement('body'),
+        head: makeElement('head'),
+        createElement: makeElement,
+        getElementById(id) { return elements.find((node) => node.id === id) || null; },
+        querySelector(selector) {
+            return elements.find((node) => selector === '.cyber-labs-credential-notification' &&
+                String(node.className).includes('cyber-labs-credential-notification')) || null;
+        },
+        querySelectorAll(selector) {
+            return elements.filter((node) => selector === '.cyber-labs-credential-notification' &&
+                String(node.className).includes('cyber-labs-credential-notification'));
+        }
+    };
+    const sandbox = { window: {}, document, setTimeout, clearTimeout, console };
+    sandbox.window = sandbox;
+    sandbox.globalThis = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../../content/notification-ui.js'), 'utf8'), sandbox, { filename: 'notification-ui.js' });
+    const notes = sandbox.FerretWatchNotifications;
+    notes.showRegularNotification([found[0]], [found[0]]);
+    notes.showRegularNotification(found, [found[1]]);
+    const popups = document.querySelectorAll('.cyber-labs-credential-notification');
+    Assert.equal(popups.length, 1, 'second alert updates the same popup');
+    const texts = [];
+    (function walk(node) {
+        if (node.textContent) texts.push(node.textContent);
+        node.children.forEach(walk);
+    })(popups[0]);
+    Assert.ok(texts.some((text) => text.includes('2 Credentials Found')), 'title counts every finding');
+    Assert.equal(texts.filter((text) => text === 'MongoDB Connection String' || text === 'AWS Access Key ID').length, 2, 'both distinct findings stay listed');
+    Assert.ok(texts.some((text) => text.includes('mongodb://username:password@cluster.mongodb.net/myapp')), 'alert shows the full match');
+});
+
 testFramework.test('page monitoring source does not wrap fetch for normal operation', () => {
     const index = fs.readFileSync(path.join(__dirname, '../../content/index.js'), 'utf8');
     Assert.match(index, /pageInterceptor !== true/, 'page wrapper is diagnostic only');

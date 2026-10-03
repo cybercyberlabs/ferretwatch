@@ -34,6 +34,8 @@ class BackgroundService {
         this.pendingScans = 0;
         this.queuedScans = 0;
         this.policyVersion = 0;
+        this.pendingAlerts = new Map();
+        this.alertTimers = new Map();
 
         this.init();
     }
@@ -263,14 +265,7 @@ class BackgroundService {
         if (report.accepted && this.settings && (this.settings.enableNotifications || this.settings.showNotifications)) {
             const fresh = (scanData.findings || []).filter((finding) => report.added.includes(finding.id || FerretWatchContracts.findingId(finding)));
             const credentials = fresh.filter((finding) => finding.category !== 'cloudStorage' && (finding.riskLevel === 'critical' || finding.riskLevel === 'high'));
-            if (credentials.length > 0) {
-                await this.showNotification({
-                    type: 'credential_detected',
-                    title: 'Credentials detected',
-                    message: `Found ${credentials.length} high-risk credential(s)`,
-                    findings: credentials
-                });
-            }
+            if (credentials.length > 0) this.queueAlert(tabId, credentials);
         }
         await this.updateBadge(tabId, report.findings.length);
         return report;
@@ -764,6 +759,37 @@ class BackgroundService {
         return validated;
     }
 
+    queueAlert(tabId, findings) {
+        const pending = this.pendingAlerts.get(tabId) || [];
+        findings.forEach((finding) => {
+            const id = finding.id || FerretWatchContracts.findingId(finding);
+            if (!pending.some((existing) => (existing.id || FerretWatchContracts.findingId(existing)) === id)) {
+                pending.push(finding);
+            }
+        });
+        this.pendingAlerts.set(tabId, pending);
+        clearTimeout(this.alertTimers.get(tabId));
+        this.alertTimers.set(tabId, setTimeout(() => this.flushAlert(tabId), 700));
+    }
+
+    flushAlert(tabId) {
+        clearTimeout(this.alertTimers.get(tabId));
+        this.alertTimers.delete(tabId);
+        const pending = this.pendingAlerts.get(tabId) || [];
+        this.pendingAlerts.delete(tabId);
+        if (!pending.length) return;
+        this.showNotification({
+            type: 'credential_detected',
+            title: 'Credentials detected',
+            message: `Found ${pending.length} high-risk credential(s)`,
+            findings: pending
+        });
+    }
+
+    flushAlerts() {
+        [...this.pendingAlerts.keys()].forEach((tabId) => this.flushAlert(tabId));
+    }
+
     async showNotification(notificationData) {
         if (!this.settings?.enableNotifications || this.settings.showNotifications === false) return;
 
@@ -831,6 +857,7 @@ class BackgroundService {
     }
 
     beginDocument(tabId, url) {
+        this.flushAlert(tabId);
         this.nativeMonitor?.cancelTab(tabId);
         this.findingStore.beginDocument(tabId);
         this.pageUrls.set(tabId, url);

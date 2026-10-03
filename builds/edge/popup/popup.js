@@ -766,25 +766,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function maskSecret(value) {
-    if (!value || value.length <= 8) return escapeHtml(value);
-
-    // For bucket URLs, don't mask them as they're not secrets
-    if (value.includes('s3.amazonaws.com') ||
-        value.includes('storage.googleapis.com') ||
-        value.includes('blob.core.windows.net') ||
-        value.startsWith('s3://') ||
-        value.startsWith('gs://')) {
-        return escapeHtml(value);
-    }
-
-    // For other values, apply masking
-    const start = value.substring(0, 4);
-    const end = value.substring(value.length - 4);
-    const masked = '*'.repeat(Math.min(value.length - 8, 20));
-    return escapeHtml(start + masked + end);
-}
-
 async function copyToClipboard(text) {
     try {
         await navigator.clipboard.writeText(text);
@@ -1175,7 +1156,7 @@ function createFindingElement(finding) {
             <div class="finding-type">${escapeHtml(finding.type || 'Unknown')}</div>
             <div class="finding-risk ${finding.riskLevel || 'medium'}">${finding.riskLevel || 'medium'}</div>
         </div>
-        <div class="finding-value">${maskSecret(finding.value || 'Unknown')}</div>
+        <div class="finding-value">${escapeHtml(finding.value || 'Unknown')}</div>
         ${isBucketFinding ? createBucketInfoHtml(finding.bucketInfo) : ''}
         <div class="finding-actions">
             <button class="finding-action-btn copy" data-value="${escapeHtml(finding.value || '')}">

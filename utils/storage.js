@@ -305,21 +305,26 @@ if (typeof module !== 'undefined' && module.exports) {
     };
 }
 
-// For browser environment
+// Firefox content scripts keep window (the page) separate from globalThis
+// (the sandbox). Publish on both so either lookup finds the same object.
+const storageApi = {
+    DEFAULT_SETTINGS,
+    getSetting,
+    setSetting,
+    getAllSettings,
+    resetSettings,
+    loadExtensionSettings,
+    ensureSettings,
+    applySettings,
+    isDomainWhitelisted,
+    isCategoryEnabled,
+    isBucketScanningEnabled,
+    isProviderEnabled,
+    getBucketScanningSettings
+};
 if (typeof globalThis !== 'undefined') {
-    globalThis.StorageUtils = {
-        DEFAULT_SETTINGS,
-        getSetting,
-        setSetting,
-        getAllSettings,
-        resetSettings,
-        loadExtensionSettings,
-        ensureSettings,
-        applySettings,
-        isDomainWhitelisted,
-        isCategoryEnabled,
-        isBucketScanningEnabled,
-        isProviderEnabled,
-        getBucketScanningSettings
-    };
+    globalThis.StorageUtils = storageApi;
+}
+if (typeof window !== 'undefined') {
+    window.StorageUtils = storageApi;
 }

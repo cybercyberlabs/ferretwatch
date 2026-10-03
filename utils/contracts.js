@@ -645,5 +645,9 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = FerretWatchContracts;
 }
 
-const contractRoot = typeof globalThis !== 'undefined' ? globalThis : this;
-contractRoot.FerretWatchContracts = FerretWatchContracts;
+if (typeof globalThis !== 'undefined') {
+    globalThis.FerretWatchContracts = FerretWatchContracts;
+}
+if (typeof window !== 'undefined') {
+    window.FerretWatchContracts = FerretWatchContracts;
+}

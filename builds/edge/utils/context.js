@@ -191,16 +191,19 @@ if (typeof module !== 'undefined' && module.exports) {
     };
 }
 
-// For browser environment
+const contextApi = {
+    removeScriptTags,
+    removeCssTags,
+    isMinifiedJavaScript,
+    filterContent,
+    isSuspiciousContext,
+    extractVisibleText,
+    extractScriptBodies,
+    extractAttributeValues
+};
 if (typeof globalThis !== 'undefined') {
-    globalThis.ContextUtils = {
-        removeScriptTags,
-        removeCssTags,
-        isMinifiedJavaScript,
-        filterContent,
-        isSuspiciousContext,
-        extractVisibleText,
-        extractScriptBodies,
-        extractAttributeValues
-    };
+    globalThis.ContextUtils = contextApi;
+}
+if (typeof window !== 'undefined') {
+    window.ContextUtils = contextApi;
 }

@@ -65,6 +65,7 @@ async function load(root = ROOT, initial = {}, worker = false) {
     h.flush = async () => {
         for (let i = 0; i < 500 && (bg.queuedScans || bg.pendingScans); i++) await new Promise(r => setTimeout(r, 2));
         assert.equal(bg.queuedScans + bg.pendingScans, 0, 'scans complete');
+        bg.flushAlerts();
         await tick();
         assert.deepEqual(errors, [], 'no background errors');
     };

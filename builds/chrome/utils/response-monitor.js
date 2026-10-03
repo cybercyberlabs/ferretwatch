@@ -227,3 +227,4 @@ class NativeResponseMonitor {
 }
 
 globalThis.NativeResponseMonitor = NativeResponseMonitor;
+if (typeof window !== 'undefined') window.NativeResponseMonitor = NativeResponseMonitor;

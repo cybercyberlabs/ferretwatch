@@ -74,4 +74,5 @@
         }
     }
     globalThis.FerretWatchDomMonitor = DomMonitor;
+    if (typeof window !== 'undefined') window.FerretWatchDomMonitor = DomMonitor;
 })();

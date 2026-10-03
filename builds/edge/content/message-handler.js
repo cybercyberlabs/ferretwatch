@@ -94,7 +94,7 @@
      */
     function handleWindowMessage(event) {
         if (event.source !== window) return;
-        const lib = window.FerretWatchContracts;
+        const lib = globalThis.FerretWatchContracts || window.FerretWatchContracts;
         const verdict = lib ? lib.validateBridgeMessage(event.data) : (
             event.data && (event.data.type === MESSAGE_TYPES.API_CALL || event.data.type === MESSAGE_TYPES.API_RESPONSE)
                 ? { ok: true, message: event.data }

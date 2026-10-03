@@ -2,24 +2,24 @@
   "metadata": {
     "extensionName": "Firefox Credential Scanner",
     "version": "2.3.5",
-    "testRunDate": "2026-10-02T10:45:58.709Z",
-    "testDuration": 1057,
+    "testRunDate": "2026-10-03T07:57:24.503Z",
+    "testDuration": 1641,
     "nodeVersion": "v20.19.5",
     "testFramework": "Custom TestFramework v1.0"
   },
   "summary": {
-    "passed": 31,
+    "passed": 32,
     "failed": 0,
-    "total": 31,
-    "executionTime": 1041,
+    "total": 32,
+    "executionTime": 1619,
     "suiteResults": {
       "regression": {
-        "passed": 16,
+        "passed": 17,
         "failed": 0,
         "skipped": 0,
-        "total": 16,
+        "total": 17,
         "failures": [],
-        "executionTime": 76
+        "executionTime": 111
       },
       "integration": {
         "passed": 15,
@@ -27,7 +27,7 @@
         "skipped": 0,
         "total": 15,
         "failures": [],
-        "executionTime": 965
+        "executionTime": 1508
       }
     }
   },
@@ -39,22 +39,22 @@
       "skipped": 0,
       "total": 15,
       "failures": [],
-      "executionTime": 965
+      "executionTime": 1508
     },
     "performance": null,
     "overall": {
-      "passed": 31,
+      "passed": 32,
       "failed": 0,
-      "total": 31,
-      "executionTime": 1041,
+      "total": 32,
+      "executionTime": 1619,
       "suiteResults": {
         "regression": {
-          "passed": 16,
+          "passed": 17,
           "failed": 0,
           "skipped": 0,
-          "total": 16,
+          "total": 17,
           "failures": [],
-          "executionTime": 76
+          "executionTime": 111
         },
         "integration": {
           "passed": 15,
@@ -62,28 +62,28 @@
           "skipped": 0,
           "total": 15,
           "failures": [],
-          "executionTime": 965
+          "executionTime": 1508
         }
       }
     },
     "regression": {
-      "passed": 16,
+      "passed": 17,
       "failed": 0,
       "skipped": 0,
-      "total": 16,
+      "total": 17,
       "failures": [],
-      "executionTime": 76
+      "executionTime": 111
     }
   },
   "performance": {
-    "averageTestTime": 33.58064516129032,
+    "averageTestTime": 50.59375,
     "slowestSuite": {
       "name": "integration",
-      "time": 965
+      "time": 1508
     },
     "memoryUsage": {
       "heapUsed": 12,
-      "heapTotal": 27,
+      "heapTotal": 28,
       "external": 3
     }
   },
