@@ -74,7 +74,7 @@
                 valueDiv.style.cssText = 'font-family: monospace; font-size: 12px; color: rgba(255,255,255,0.9); display: flex; justify-content: space-between; align-items: center;';
 
                 const valueText = document.createElement('span');
-                valueText.textContent = finding.value; // Show actual value without masking
+                valueText.textContent = finding.value == null ? '' : String(finding.value);
                 valueDiv.appendChild(valueText);
 
                 // Add copy button for bucket URLs
@@ -114,7 +114,8 @@
                 else if (finding.context && finding.context.trim() !== '' && finding.context !== 'N/A') {
                     const contextDiv = document.createElement('div');
                     contextDiv.style.cssText = 'font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 4px; font-style: italic;';
-                    contextDiv.textContent = `"${finding.context.substring(0, 50)}${finding.context.length > 50 ? '...' : ''}"`;
+                    const shown = String(finding.context);
+                    contextDiv.textContent = `"${shown.substring(0, 120)}${shown.length > 120 ? '...' : ''}"`;
                     findingDiv.appendChild(contextDiv);
                 }
 
@@ -143,18 +144,18 @@
      * @param {string} risk - Risk level (critical, high, medium, low)
      */
     function showNotification(content, risk = 'medium') {
-        // Remove any existing notifications
-        const existing = document.querySelectorAll('.cyber-labs-credential-notification');
-        existing.forEach(el => el.remove());
+        // One popup per page. Later findings update it in place instead of starting another alert.
+        let notification = document.querySelector('.cyber-labs-credential-notification');
+        const created = !notification;
+        if (!notification) {
+            notification = document.createElement('div');
+            notification.className = 'cyber-labs-credential-notification';
+        }
 
-        const notification = document.createElement('div');
-        notification.className = 'cyber-labs-credential-notification';
-
-        // Handle both string and object content
+        notification.replaceChildren();
         if (typeof content === 'string') {
             notification.textContent = content;
         } else if (content && typeof content === 'object') {
-            // Build notification DOM structure
             buildNotificationContent(notification, content, risk);
         }
 
@@ -176,9 +177,9 @@
             fontFamily: 'system-ui, -apple-system, sans-serif',
             border: '1px solid rgba(255,255,255,0.2)',
             backdropFilter: 'blur(10px)',
-            transition: 'all 0.3s ease',
-            animation: 'slideInRight 0.3s ease-out'
+            transition: 'all 0.3s ease'
         });
+        if (created) notification.style.animation = 'slideInRight 0.3s ease-out';
 
         // Add CSS animation keyframes
         if (!document.getElementById('ferretwatch-animations')) {
@@ -215,7 +216,7 @@
             document.head.appendChild(style);
         }
 
-        notification.addEventListener('click', () => {
+        if (created) notification.addEventListener('click', () => {
             notification.style.animation = 'slideOutRight 0.3s ease-in forwards';
             setTimeout(() => {
                 if (notification.parentNode) notification.remove();
@@ -223,8 +224,8 @@
             notificationDismissed = true;
         });
 
-        // Auto-dismiss after 12 seconds
-        setTimeout(() => {
+        clearTimeout(notification._fwDismissTimer);
+        notification._fwDismissTimer = setTimeout(() => {
             if (notification.parentNode) {
                 notification.style.animation = 'slideOutRight 0.3s ease-in forwards';
                 setTimeout(() => {
@@ -233,7 +234,7 @@
             }
         }, 12000);
 
-        document.body.appendChild(notification);
+        if (created) (document.body || document.documentElement).appendChild(notification);
     }
 
     /**
@@ -311,12 +312,10 @@
             unknown: '❓'
         }[highestRisk] || '📋';
 
-        const notificationTitle = newRegularFindings.length > 0 ?
-            `🆕 ${newRegularFindings.length} New Credential${newRegularFindings.length > 1 ? 's' : ''} Found` :
-            `🚨 ${allRegularFindings.length} Credential${allRegularFindings.length > 1 ? 's' : ''} Detected`;
-
-        const displayFindings = (newRegularFindings.length > 0 ? newRegularFindings : allRegularFindings).slice(0, 3);
-        const moreCount = allRegularFindings.length > 3 ? allRegularFindings.length - 3 : 0;
+        const total = allRegularFindings.length;
+        const notificationTitle = `${total} Credential${total === 1 ? '' : 's'} Found`;
+        const displayFindings = allRegularFindings.slice(0, 3);
+        const moreCount = Math.max(0, total - displayFindings.length);
 
         showNotification(
             {

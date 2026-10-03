@@ -13,7 +13,9 @@
   "permissions": [
     "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "webRequest",
+    "notifications"
   ],
   "background": {
     "service_worker": "background.js"
@@ -24,6 +26,7 @@
         "<all_urls>"
       ],
       "js": [
+        "utils/contracts.js",
         "config/patterns.js",
         "utils/storage.js",
         "utils/context.js",
@@ -39,6 +42,7 @@
         "content/message-handler.js",
         "content/notification-ui.js",
         "content/scanner-manager.js",
+        "content/dom-monitor.js",
         "content/index.js"
       ],
       "run_at": "document_start"
@@ -77,10 +81,6 @@
     }
   },
   "host_permissions": [
-    "<all_urls>",
-    "storage",
-    "activeTab",
-    "webRequest",
-    "webRequestBlocking"
+    "<all_urls>"
   ]
 }

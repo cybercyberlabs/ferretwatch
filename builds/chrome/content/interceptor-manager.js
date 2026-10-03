@@ -1,1 +1,110 @@
-!function(){"use strict";const t="undefined"!=typeof browser?browser:chrome;let e=!1;function n(t){window.debugLog&&window.debugLog(t)}function r(r){if(n("[FW Content] injectInterceptor() called"),r&&r())return n("[FW Content] Skipping interceptor injection - domain is whitelisted"),!1;if(e)return n("[FW Content] Interceptor already injected by this content script - skipping"),!0;try{n("[FW Content] Creating interceptor script element...");const r=document.createElement("script");return r.src=t.runtime.getURL("utils/network-interceptor.js"),r.onload=function(){n("[FW Content] Interceptor script loaded and executed"),this.remove()},r.onerror=function(t){console.error("[FW Content] Interceptor script failed to load:",t)},(document.head||document.documentElement).appendChild(r),e=!0,n("[FW Content] Interceptor script element appended to DOM"),n("Network interceptor injected"),!0}catch(t){return console.error("[FW Content] Failed to inject interceptor:",t),!1}}async function o(t,e){try{if(n("[FW Content] Early initialization at document_start"),await t(),e())return n("[FW Content] Domain is whitelisted - skipping interceptor injection"),!1;const o=r(e);return n("[FW Content] Interceptor injected at document_start"),o}catch(t){return console.error("[FW Content] Early injection error:",t),!1}}function i(){return e}window.FerretWatchInterceptor={injectInterceptor:r,injectInterceptorEarly:o,isInterceptorInjected:i}}();
+/**
+ * Network Interceptor Manager for FerretWatch
+ * Handles injection of network interceptor into page context
+ */
+
+(function() {
+    'use strict';
+
+    // Browser API reference
+    const api = typeof browser !== 'undefined' ? browser : chrome;
+
+    // State
+    let interceptorInjected = false;
+
+    /**
+     * Log debug message (requires debugLog to be available globally)
+     */
+    function debugLog(message) {
+        if (window.debugLog) {
+            window.debugLog(message);
+        }
+    }
+
+    /**
+     * Inject network interceptor script into page context
+     * @param {Function} whitelistChecker - Function to check if domain is whitelisted
+     * @returns {boolean} True if injection was successful or already injected
+     */
+    function injectInterceptor(whitelistChecker) {
+        debugLog('[FW Content] injectInterceptor() called');
+
+        // Check whitelist
+        if (whitelistChecker && whitelistChecker()) {
+            debugLog('[FW Content] Skipping interceptor injection - domain is whitelisted');
+            return false;
+        }
+
+        // Check if already injected
+        if (interceptorInjected) {
+            debugLog('[FW Content] Interceptor already injected by this content script - skipping');
+            return true;
+        }
+
+        try {
+            debugLog('[FW Content] Creating interceptor script element...');
+            const script = document.createElement('script');
+            script.src = api.runtime.getURL('utils/network-interceptor.js');
+
+            script.onload = function() {
+                debugLog('[FW Content] Interceptor script loaded and executed');
+                this.remove();
+            };
+
+            script.onerror = function(e) {
+                console.error('[FW Content] Interceptor script failed to load:', e);
+            };
+
+            (document.head || document.documentElement).appendChild(script);
+            interceptorInjected = true;
+            debugLog('[FW Content] Interceptor script element appended to DOM');
+            debugLog('Network interceptor injected');
+            return true;
+        } catch (e) {
+            console.error('[FW Content] Failed to inject interceptor:', e);
+            return false;
+        }
+    }
+
+    /**
+     * Inject interceptor early (at document_start)
+     * @param {Function} loadWhitelistFn - Function to load whitelist
+     * @param {Function} whitelistChecker - Function to check if domain is whitelisted
+     * @returns {Promise<boolean>} True if injection was successful
+     */
+    async function injectInterceptorEarly(loadWhitelistFn, whitelistChecker) {
+        try {
+            debugLog('[FW Content] Early initialization at document_start');
+            await loadWhitelistFn();
+
+            if (whitelistChecker()) {
+                debugLog('[FW Content] Domain is whitelisted - skipping interceptor injection');
+                return false;
+            }
+
+            // Inject interceptor before any page scripts can run
+            const result = injectInterceptor(whitelistChecker);
+            debugLog('[FW Content] Interceptor injected at document_start');
+            return result;
+        } catch (error) {
+            console.error('[FW Content] Early injection error:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Check if interceptor has been injected
+     * @returns {boolean} True if already injected
+     */
+    function isInterceptorInjected() {
+        return interceptorInjected;
+    }
+
+    // Expose public API
+    window.FerretWatchInterceptor = {
+        injectInterceptor,
+        injectInterceptorEarly,
+        isInterceptorInjected
+    };
+
+})();

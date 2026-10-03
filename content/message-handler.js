@@ -93,17 +93,21 @@
      * @param {MessageEvent} event - The message event
      */
     function handleWindowMessage(event) {
-        // Only accept messages from same window
         if (event.source !== window) return;
-
-        // Handle API call (request)
-        if (event.data && event.data.type === MESSAGE_TYPES.API_CALL) {
-            sendApiCallToBackground(event.data.data);
+        const lib = globalThis.FerretWatchContracts || window.FerretWatchContracts;
+        const verdict = lib ? lib.validateBridgeMessage(event.data) : (
+            event.data && (event.data.type === MESSAGE_TYPES.API_CALL || event.data.type === MESSAGE_TYPES.API_RESPONSE)
+                ? { ok: true, message: event.data }
+                : { ok: false }
+        );
+        if (!verdict.ok) {
+            return;
         }
-
-        // Handle API response
-        if (event.data && event.data.type === MESSAGE_TYPES.API_RESPONSE) {
-            sendApiResponseToBackground(event.data.data);
+        if (verdict.message.type === MESSAGE_TYPES.API_CALL) {
+            sendApiCallToBackground(verdict.message.data);
+        }
+        if (verdict.message.type === MESSAGE_TYPES.API_RESPONSE) {
+            sendApiResponseToBackground(verdict.message.data);
         }
     }
 

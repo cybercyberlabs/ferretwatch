@@ -1,21 +1,21 @@
 # FerretWatch Build Report
 
-**Build Date:** Tue Jan 13 05:58:36 PM IST 2026
-**Version:** 2.3.1
+**Build Date:** Sat Oct  3 10:57:27 AM IDT 2026
+**Version:** 2.3.5
 **Build Tools:**
-- Terser: true
+- Terser: false
 - jq: true
 
 ## Generated Packages
 
-- **firefox**: ferretwatch-firefox-v2.3.1.zip (173K)
-- **chrome**: ferretwatch-chrome-v2.3.1.zip (173K)
-- **edge**: ferretwatch-edge-v2.3.1.zip (173K)
+- **firefox**: ferretwatch-firefox-v2.3.5.zip (202K)
+- **chrome**: ferretwatch-chrome-v2.3.5.zip (202K)
+- **edge**: ferretwatch-edge-v2.3.5.zip (202K)
 
 ## Build Configuration
 
 - **Unified Scripts**: Yes
-- **Minification**: true
+- **Minification**: false
 - **Console Logging**: Preserved for debugging
 - **Source Maps**: Not generated
 

@@ -33,8 +33,7 @@ class BucketScanningSettings {
      */
     async getBucketScanningSettings() {
         try {
-            const result = await browser.storage.local.get(['userSettings']);
-            const userSettings = result.userSettings || {};
+            const userSettings = await globalThis.StorageUtils.ensureSettings();
             
             if (userSettings.cloudBucketScanning) {
                 return this.validateSettings(userSettings.cloudBucketScanning);
@@ -54,8 +53,7 @@ class BucketScanningSettings {
      */
     async updateBucketScanningSettings(newSettings) {
         try {
-            const result = await browser.storage.local.get(['userSettings']);
-            const userSettings = result.userSettings || {};
+            const userSettings = await globalThis.StorageUtils.ensureSettings();
             
             const validatedSettings = this.validateSettings(newSettings);
             userSettings.cloudBucketScanning = {
@@ -64,16 +62,9 @@ class BucketScanningSettings {
                 ...validatedSettings
             };
             
-            await browser.storage.local.set({ userSettings });
+            await globalThis.StorageUtils.setSetting('cloudBucketScanning', userSettings.cloudBucketScanning);
             
-            // Broadcast settings update
-            if (typeof browser.runtime !== 'undefined' && browser.runtime.sendMessage) {
-                browser.runtime.sendMessage({
-                    type: 'UPDATE_SETTINGS',
-                    data: userSettings
-                });
-            }
-            
+            // storage.onChanged broadcasts canonical settings to open tabs.
         } catch (error) {
             console.error('Failed to update bucket scanning settings:', error);
             throw error;

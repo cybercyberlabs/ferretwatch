@@ -35,7 +35,8 @@ const COMPILED_PATTERNS = {
 
 // Optimized false positive patterns - compiled once
 const FALSE_POSITIVE_PATTERNS = [
-    /(?:YOUR_|your_|example|test|dummy|placeholder|sample|demo|fake|mock)/i,
+    /^(?:your_|example[_-]|placeholder|dummy[_-]|sample[_-]|changeme|fake[_-]|mock[_-]|xxx+|redacted\b)/i,
+    /^(?:example|placeholder|dummy|sample|changeme|fake|mock|test|demo|password|secret|token)$/i,
     /^[a-z]{1,5}$/i,
     /(?:key|token):\s*(?:"|%27)(?:_|\w{1,15}(?:Cell|Column|Height|Width|Size|Position|Count|Cache|Data|Ref|Change|View|Scroll|Index|Range))(?:"|%27)/i,
     /(?:data-|class=|style=|href=|src=|aria-|role=|<\w+|hotkey=|button|svg|div|span)/i

@@ -7,6 +7,7 @@
     'use strict';
 
     // State
+    let loadRevision = 0;
     let requests = new Map(); // Map<requestId, requestData>
     let selectedRequestId = null;
     let targetTabId = null;
@@ -88,6 +89,7 @@
 
         // Set up message listener for real-time updates
         api.runtime.onMessage.addListener((message) => {
+            if (message.type === 'API_ENDPOINTS_UPDATED' && message.tabId === targetTabId) loadEndpoints();
             if (message.type === 'NEW_API_ENDPOINT' && message.tabId === targetTabId) {
                 addOrUpdateRequest(message.endpoint);
             }
@@ -98,16 +100,24 @@
 
     // Load existing endpoints from background
     async function loadEndpoints() {
+        const revision = ++loadRevision;
         try {
             const response = await api.runtime.sendMessage({
                 type: 'GET_API_ENDPOINTS',
                 tabId: targetTabId
             });
 
+            if (revision !== loadRevision) return;
             if (response && response.endpoints) {
+                requests.clear();
+                elements.requestTbody.replaceChildren();
                 console.log(`[Explorer v2] Loaded ${response.endpoints.length} endpoints`);
                 response.endpoints.forEach(endpoint => addOrUpdateRequest(endpoint));
                 updateRequestCount();
+                if (selectedRequestId && !requests.has(selectedRequestId)) {
+                    selectedRequestId = null;
+                    elements.detailPanel.style.display = 'none';
+                }
             }
         } catch (error) {
             console.error('[Explorer v2] Error loading endpoints:', error);
@@ -117,7 +127,7 @@
     // Add or update a request in the table
     function addOrUpdateRequest(endpoint) {
         // Generate unique ID for this request
-        const requestId = `${endpoint.method}-${endpoint.url}-${endpoint.timestamp || Date.now()}`;
+        const requestId = endpoint.requestId || `${endpoint.method}-${endpoint.url}-${endpoint.timestamp || Date.now()}`;
 
         // Determine if this is a live or static endpoint
         const source = endpoint.response ? 'live' : (endpoint.source === 'live' ? 'live' : 'static');
@@ -149,7 +159,7 @@
     // Render a request row in the table
     function renderRequestRow(request) {
         // Check if row already exists
-        let row = document.querySelector(`tr[data-request-id="${request.id}"]`);
+        let row = Array.from(elements.requestTbody.rows).find(row => row.dataset.requestId === request.id);
 
         const isNewRow = !row;
 
@@ -169,16 +179,42 @@
         row.style.display = (matchesFilter && matchesSourceFilter) ? '' : 'none';
 
         // Build row content
-        const statusClass = request.status ? `status-${Math.floor(request.status / 100)}xx` : 'status-pending';
-        row.innerHTML = `
-            <td><span class="source-badge ${request.source}">${request.source.toUpperCase()}</span></td>
-            <td><span class="method-badge method-${request.method}">${request.method}</span></td>
-            <td class="url-cell" title="${request.url}">${request.url}</td>
-            <td><span class="${statusClass}">${request.status || '---'}</span></td>
-            <td>${request.type}</td>
-            <td>${request.duration ? `${request.duration}ms` : '---'}</td>
-            <td>${request.size ? formatBytes(request.size) : '---'}</td>
-        `;
+        const allowedSources = ['live', 'static'];
+        const allowedMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+        const source = allowedSources.includes(request.source) ? request.source : 'live';
+        const method = allowedMethods.includes(String(request.method || '').toUpperCase())
+            ? String(request.method).toUpperCase()
+            : 'GET';
+        const statusBucket = request.status ? Math.floor(Number(request.status) / 100) : 0;
+        const statusClass = statusBucket >= 1 && statusBucket <= 5 ? `status-${statusBucket}xx` : 'status-pending';
+        row.replaceChildren();
+        function textCell(value, className) {
+            const td = document.createElement('td');
+            if (className) td.className = className;
+            td.textContent = value == null || value === '' ? '---' : String(value);
+            return td;
+        }
+        const sourceCell = document.createElement('td');
+        const sourceBadge = document.createElement('span');
+        sourceBadge.className = 'source-badge ' + source;
+        sourceBadge.textContent = source.toUpperCase();
+        sourceCell.appendChild(sourceBadge);
+        const methodCell = document.createElement('td');
+        const methodBadge = document.createElement('span');
+        methodBadge.className = 'method-badge method-' + method;
+        methodBadge.textContent = method;
+        methodCell.appendChild(methodBadge);
+        const urlCell = textCell(request.url, 'url-cell');
+        urlCell.title = request.url == null ? '' : String(request.url);
+        const statusCell = document.createElement('td');
+        const statusBadge = document.createElement('span');
+        statusBadge.className = statusClass;
+        statusBadge.textContent = request.status ? String(request.status) : '---';
+        statusCell.appendChild(statusBadge);
+        row.append(sourceCell, methodCell, urlCell, statusCell,
+            textCell(request.type),
+            textCell(request.duration ? `${request.duration}ms` : ''),
+            textCell(request.size ? formatBytes(request.size) : ''));
 
         // Attach click listener after setting innerHTML (only for new rows)
         if (isNewRow) {
@@ -248,13 +284,22 @@
     function addHeaderRow(key = '', value = '') {
         const row = document.createElement('div');
         row.className = 'header-row';
-        row.innerHTML = `
-            <input type="text" class="header-key" placeholder="Header name" value="${escapeHtml(key)}">
-            <input type="text" class="header-value" placeholder="Header value" value="${escapeHtml(value)}">
-            <button class="btn-remove-header">✕</button>
-        `;
-
-        row.querySelector('.btn-remove-header').addEventListener('click', () => row.remove());
+        const keyInput = document.createElement('input');
+        keyInput.type = 'text';
+        keyInput.className = 'header-key';
+        keyInput.placeholder = 'Header name';
+        keyInput.value = key == null ? '' : String(key);
+        const valueInput = document.createElement('input');
+        valueInput.type = 'text';
+        valueInput.className = 'header-value';
+        valueInput.placeholder = 'Header value';
+        valueInput.value = value == null ? '' : String(value);
+        const removeButton = document.createElement('button');
+        removeButton.className = 'btn-remove-header';
+        removeButton.type = 'button';
+        removeButton.textContent = '✕';
+        removeButton.addEventListener('click', () => row.remove());
+        row.append(keyInput, valueInput, removeButton);
         elements.requestHeadersEditor.appendChild(row);
     }
 
@@ -524,10 +569,12 @@
             // Send request via background script
             const response = await api.runtime.sendMessage({
                 type: 'REPLAY_REQUEST',
-                data: {
+                    data: {
                     method,
                     url,
-                    origin: request.origin, // Pass origin for URL resolution
+                    origin: request.origin,
+                    sourceTabId: targetTabId,
+                    tabId: targetTabId,
                     headers,
                     body: body || null
                 }
@@ -537,7 +584,7 @@
                 // Display results
                 elements.replayResultsDisplay.innerHTML = `
                     <div style="margin-bottom: 16px;">
-                        <strong>Status:</strong> <span class="status-${Math.floor(response.status / 100)}xx">${response.status} ${response.statusText}</span><br>
+                        <strong>Status:</strong> <span class="status-${Math.floor(Number(response.status) / 100)}xx">${escapeHtml(String(response.status))} ${escapeHtml(response.statusText || '')}</span><br>
                         <strong>Time:</strong> ${response.duration}ms<br>
                         <strong>Size:</strong> ${formatBytes(response.body.length)}
                     </div>

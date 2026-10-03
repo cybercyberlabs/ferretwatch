@@ -17,6 +17,24 @@ try {
 
         const originalFetch = window.fetch;
         const originalXHR = window.XMLHttpRequest;
+        const MAX_RESPONSE_CHARS = 256 * 1024;
+        const MAX_BODY_CHARS = 32 * 1024;
+
+        function boundText(value, limit) {
+            const text = value == null ? '' : String(value);
+            if (text.length <= limit) {
+                return text;
+            }
+            return text.slice(0, limit);
+        }
+
+        function resolveUrl(url) {
+            try {
+                return new URL(url, window.location.href).href;
+            } catch (e) {
+                return url;
+            }
+        }
 
     function notify(type, url, method, body = null, headers = {}) {
         // Resolve relative URLs to absolute
@@ -41,7 +59,7 @@ try {
         try {
             if (body) {
                 if (typeof body === 'string') {
-                    serializedBody = body;
+                    serializedBody = boundText(body, MAX_BODY_CHARS);
                 } else if (body instanceof FormData) {
                     serializedBody = '[FormData]';
                 } else if (body instanceof Blob) {
@@ -150,7 +168,7 @@ try {
         responsePromise.then(response => {
             try {
                 const requestDuration = Date.now() - requestStartTime;
-                const urlString = typeof requestUrl === 'string' ? requestUrl : requestUrl.toString();
+                const urlString = resolveUrl(typeof requestUrl === 'string' ? requestUrl : requestUrl.toString());
 
                 // Clone response to read body without consuming it
                 const responseClone = response.clone();
@@ -166,8 +184,14 @@ try {
                 }
 
                 // Read response body asynchronously
+                const contentType = response.headers.get('content-type') || '';
+                const scannable = /text\/|json|javascript|xml|graphql/i.test(contentType);
+                if (!scannable) {
+                    return;
+                }
                 responseClone.text().then(responseBody => {
                     try {
+                        const bounded = boundText(responseBody, MAX_RESPONSE_CHARS);
                         window.postMessage({
                             type: 'FERRETWATCH_API_RESPONSE',
                             data: {
@@ -180,8 +204,9 @@ try {
                                 status: response.status,
                                 statusText: response.statusText,
                                 responseHeaders: responseHeaders,
-                                responseBody: responseBody,
-                                responseSize: responseBody.length
+                                responseBody: bounded,
+                                responseSize: responseBody.length,
+                                truncated: bounded.length < responseBody.length
                             }
                         }, '*');
                     } catch (e) {
@@ -197,7 +222,7 @@ try {
             // Fetch failed - still notify with error info
             try {
                 const requestDuration = Date.now() - requestStartTime;
-                const urlString = typeof requestUrl === 'string' ? requestUrl : requestUrl.toString();
+                const urlString = resolveUrl(typeof requestUrl === 'string' ? requestUrl : requestUrl.toString());
 
                 window.postMessage({
                     type: 'FERRETWATCH_API_RESPONSE',
@@ -263,29 +288,21 @@ try {
             console.debug('[FW Interceptor] XHR send notification error:', e);
         }
 
-        // Set up response interception BEFORE calling send (critical for synchronous XHR)
         const xhr = this;
-        const originalOnReadyStateChange = xhr.onreadystatechange;
-        const originalOnLoad = xhr.onload;
-
-        // Track if we've already sent the response notification (to avoid duplicates)
         let responseSent = false;
+        const requestToken = 'xhr-' + Date.now() + '-' + Math.random().toString(16).slice(2);
 
-        // Helper to send response notification
         const sendResponseNotification = () => {
             if (responseSent || !requestUrl) return;
             responseSent = true;
 
             try {
                 const requestDuration = Date.now() - requestStartTime;
-
-                // Extract response headers
                 const responseHeaders = {};
                 try {
                     const headersString = xhr.getAllResponseHeaders();
                     if (headersString) {
-                        const headerLines = headersString.trim().split(/[\r\n]+/);
-                        headerLines.forEach(line => {
+                        headersString.trim().split(/[\r\n]+/).forEach(line => {
                             const parts = line.split(': ');
                             const key = parts.shift();
                             const value = parts.join(': ');
@@ -296,7 +313,19 @@ try {
                     console.debug('[FW Interceptor] Error extracting XHR response headers:', e);
                 }
 
-                // Send response notification
+                const responseType = xhr.responseType;
+                let responseBody = '';
+                let unavailable = false;
+                if (responseType && responseType !== 'text') {
+                    unavailable = true;
+                } else {
+                    try {
+                        responseBody = boundText(xhr.responseText || '', MAX_RESPONSE_CHARS);
+                    } catch (readError) {
+                        unavailable = true;
+                    }
+                }
+
                 window.postMessage({
                     type: 'FERRETWATCH_API_RESPONSE',
                     data: {
@@ -304,13 +333,15 @@ try {
                         requestStartTime: requestStartTime,
                         duration: requestDuration,
                         type: 'xhr',
-                        url: requestUrl,
+                        requestId: requestToken,
+                        url: resolveUrl(requestUrl),
                         method: requestMethod || 'GET',
                         status: xhr.status,
                         statusText: xhr.statusText,
                         responseHeaders: responseHeaders,
-                        responseBody: xhr.responseText || '',
-                        responseSize: (xhr.responseText || '').length
+                        responseBody: responseBody,
+                        responseSize: responseBody.length,
+                        inspection: unavailable ? 'unavailable' : 'success'
                     }
                 }, '*');
             } catch (e) {
@@ -318,37 +349,14 @@ try {
             }
         };
 
-        // Wrap readystatechange handler
-        xhr.onreadystatechange = function() {
-            // Send notification when request completes
+        xhr.addEventListener('readystatechange', function() {
             if (xhr.readyState === 4) {
                 sendResponseNotification();
             }
-
-            // Call original handler if exists
-            if (originalOnReadyStateChange) {
-                try {
-                    return originalOnReadyStateChange.apply(this, arguments);
-                } catch (e) {
-                    console.debug('[FW Interceptor] Error in original onreadystatechange:', e);
-                    throw e; // Re-throw to maintain error behavior
-                }
-            }
-        };
-
-        // Wrap onload handler as fallback
-        xhr.onload = function() {
+        });
+        xhr.addEventListener('load', function() {
             sendResponseNotification();
-
-            if (originalOnLoad) {
-                try {
-                    return originalOnLoad.apply(this, arguments);
-                } catch (e) {
-                    console.debug('[FW Interceptor] Error in original onload:', e);
-                    throw e; // Re-throw to maintain error behavior
-                }
-            }
-        };
+        });
 
         // Call original send - for synchronous XHR, this will complete before returning
         const result = send.apply(this, arguments);

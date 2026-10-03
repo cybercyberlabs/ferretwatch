@@ -31,3 +31,7 @@ node_modules/
 # Test files that might be added later
 test-*.html
 debug-*.html
+
+# Desloppify artifacts
+.desloppify/
+scorecard.png

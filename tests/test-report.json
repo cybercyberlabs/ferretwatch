@@ -1,89 +1,100 @@
 {
   "metadata": {
     "extensionName": "Firefox Credential Scanner",
-    "version": "1.5.0",
-    "testRunDate": "2025-08-27T13:20:46.837Z",
-    "testDuration": 44,
-    "nodeVersion": "v18.19.1",
+    "version": "2.3.5",
+    "testRunDate": "2026-10-03T07:57:24.503Z",
+    "testDuration": 1641,
+    "nodeVersion": "v20.19.5",
     "testFramework": "Custom TestFramework v1.0"
   },
   "summary": {
-    "passed": 0,
-    "failed": 1,
-    "total": 1,
-    "executionTime": 0,
+    "passed": 32,
+    "failed": 0,
+    "total": 32,
+    "executionTime": 1619,
     "suiteResults": {
-      "patterns": {
-        "passed": 0,
-        "failed": 1,
-        "total": 1,
-        "executionTime": 0,
-        "failures": [
-          {
-            "testName": "Suite Error",
-            "error": "Cannot read properties of undefined (reading 'forEach')"
-          }
-        ]
+      "regression": {
+        "passed": 17,
+        "failed": 0,
+        "skipped": 0,
+        "total": 17,
+        "failures": [],
+        "executionTime": 111
+      },
+      "integration": {
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0,
+        "total": 15,
+        "failures": [],
+        "executionTime": 1508
       }
     }
   },
   "suiteDetails": {
     "unit": null,
-    "integration": null,
+    "integration": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "total": 15,
+      "failures": [],
+      "executionTime": 1508
+    },
     "performance": null,
     "overall": {
-      "passed": 0,
-      "failed": 1,
-      "total": 1,
-      "executionTime": 0,
+      "passed": 32,
+      "failed": 0,
+      "total": 32,
+      "executionTime": 1619,
       "suiteResults": {
-        "patterns": {
-          "passed": 0,
-          "failed": 1,
-          "total": 1,
-          "executionTime": 0,
-          "failures": [
-            {
-              "testName": "Suite Error",
-              "error": "Cannot read properties of undefined (reading 'forEach')"
-            }
-          ]
+        "regression": {
+          "passed": 17,
+          "failed": 0,
+          "skipped": 0,
+          "total": 17,
+          "failures": [],
+          "executionTime": 111
+        },
+        "integration": {
+          "passed": 15,
+          "failed": 0,
+          "skipped": 0,
+          "total": 15,
+          "failures": [],
+          "executionTime": 1508
         }
       }
     },
-    "patterns": {
-      "passed": 0,
-      "failed": 1,
-      "total": 1,
-      "executionTime": 0,
-      "failures": [
-        {
-          "testName": "Suite Error",
-          "error": "Cannot read properties of undefined (reading 'forEach')"
-        }
-      ]
+    "regression": {
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "total": 17,
+      "failures": [],
+      "executionTime": 111
     }
   },
   "performance": {
-    "averageTestTime": 0,
+    "averageTestTime": 50.59375,
     "slowestSuite": {
-      "name": "none",
-      "time": 0
+      "name": "integration",
+      "time": 1508
     },
     "memoryUsage": {
-      "heapUsed": 4,
-      "heapTotal": 8,
-      "external": 2
+      "heapUsed": 12,
+      "heapTotal": 28,
+      "external": 3
     }
   },
   "coverage": {
-    "unit": "patterns, entropy, masking",
-    "integration": "not run",
+    "unit": "scanner, contracts, patterns, settings and authorization regressions",
+    "integration": "manifest-loaded background, native events, lifecycle, settings, content reports and DOM mutations (mock browser APIs)",
     "performance": "not run"
   },
   "recommendations": [
-    "Address 1 failing test(s) before deployment",
-    "Add integration tests for end-to-end workflows",
-    "Add performance benchmarks for production readiness"
+    "Add performance benchmarks for production readiness",
+    "Automated tests passed; run the documented browser acceptance checks",
+    "Consider adding more edge case tests for robustness"
   ]
 }

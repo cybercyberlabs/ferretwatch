@@ -19,10 +19,14 @@
      */
     async function loadWhitelist() {
         try {
+            if (window.StorageUtils && window.StorageUtils.ensureSettings) {
+                await window.StorageUtils.ensureSettings();
+                whitelistedDomains = window.StorageUtils.getSetting('whitelistedDomains', []) || [];
+                return whitelistedDomains;
+            }
             if (api.storage) {
-                const result = await api.storage.local.get(['whitelistedDomains']);
-                whitelistedDomains = result.whitelistedDomains || [];
-                // Whitelist loaded successfully
+                const result = await api.storage.local.get(['settings', 'whitelistedDomains']);
+                whitelistedDomains = (result.settings && result.settings.whitelistedDomains) || result.whitelistedDomains || [];
                 return whitelistedDomains;
             }
         } catch (error) {
@@ -37,17 +41,17 @@
      * @returns {boolean} True if domain is whitelisted
      */
     function isDomainWhitelisted() {
-        // Check user whitelist only (no built-in whitelist - root causes fixed)
-        const isWhitelisted = whitelistedDomains.some(domain => {
+        const contracts = globalThis.FerretWatchContracts || window.FerretWatchContracts;
+        if (contracts) {
+            return contracts.hostMatchesWhitelist(currentDomain, whitelistedDomains);
+        }
+        return whitelistedDomains.some(domain => {
             if (domain.startsWith('*.')) {
                 const baseDomain = domain.substring(2);
                 return currentDomain === baseDomain || currentDomain.endsWith('.' + baseDomain);
-            } else {
-                return currentDomain === domain;
             }
+            return currentDomain === domain;
         });
-        // Domain whitelist check complete
-        return isWhitelisted;
     }
 
     /**
@@ -64,6 +68,14 @@
      */
     function getWhitelistedDomains() {
         return [...whitelistedDomains];
+    }
+
+    if (api.storage && api.storage.onChanged) {
+        api.storage.onChanged.addListener((changes, area) => {
+            if (area === 'local' && (changes.settings || changes.whitelistedDomains)) {
+                loadWhitelist();
+            }
+        });
     }
 
     // Expose public API

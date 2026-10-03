@@ -2,6 +2,17 @@
  * Performance-optimized scanning engine with progressive scanning
  */
 
+function trimCapturedSecret(value) {
+    if (value == null) return '';
+    let text = String(value).trim();
+    let previous;
+    do {
+        previous = text;
+        text = text.replace(/(?:\\[nrt])+$/i, '').trim();
+    } while (text !== previous);
+    return text;
+}
+
 class ProgressiveScanner {
     constructor() {
         this.scanInProgress = false;
@@ -20,9 +31,13 @@ class ProgressiveScanner {
             bucketsAccessible: 0
         };
         
-        // Initialize bucket testing utilities
+        // Initialize bucket testing utilities. Callers must await _bucketInit
+        // before probing; the constructor itself stays synchronous.
         this.bucketTester = null;
-        this.initializeBucketTester();
+        this._bucketInit = this.initializeBucketTester();
+        this.lastScanState = 'pending';
+        this.lastScanError = null;
+        this.inspectionTruncated = false;
     }
     
     /**
@@ -31,7 +46,7 @@ class ProgressiveScanner {
      * @param {...any} args - Additional arguments to log
      */
     debugLog(message, ...args) {
-        if (window.StorageUtils?.getSetting('debugMode', false)) {
+        if (globalThis.StorageUtils?.getSetting('debugMode', false)) {
             console.log(`[Scanner Debug] ${message}`, ...args);
         }
     }
@@ -42,7 +57,7 @@ class ProgressiveScanner {
      * @param {...any} args - Additional arguments to log
      */
     infoLog(message, ...args) {
-        if (window.StorageUtils?.getSetting('debugMode', false)) {
+        if (globalThis.StorageUtils?.getSetting('debugMode', false)) {
             console.log(`[Scanner] ${message}`, ...args);
         }
     }
@@ -96,55 +111,37 @@ class ProgressiveScanner {
         this.abortController = new AbortController();
         
         try {
-            // Phase 1: Quick scan of visible content
-            const visibleFindings = await this.scanVisibleContent(content, patterns, options);
-            
-            // Yield results immediately if found
+            this.inspectionTruncated = false;
+            const scanOptions = { ...options, deferLimit: true };
+            const visibleFindings = await this.scanVisibleContent(content, patterns, scanOptions);
+
             if (visibleFindings.length > 0) {
                 this.reportIntermediateResults(visibleFindings, 'visible');
             }
-            
-            // Phase 2: Background scan of full content (if enabled)
-            const scanningMode = window.StorageUtils?.getSetting('scanningMode', 'progressive');
-            
+
+            const scanningMode = globalThis.StorageUtils?.getSetting('scanningMode', 'progressive');
+            let allFindings = visibleFindings;
+
             if (scanningMode === 'progressive' || scanningMode === 'full') {
-                const fullFindings = await this.scanFullContent(content, patterns, options);
-                
-                // Combine and deduplicate results
-                let allFindings = this.combineResults(visibleFindings, fullFindings);
-                
-                // Phase 3: Cloud bucket scanning (if enabled)
-                this.debugLog('Checking if bucket scanning is enabled:', this.isBucketScanningEnabled());
-                if (this.isBucketScanningEnabled()) {
-                    this.debugLog('Bucket scanning is enabled, starting scan...');
-                    const bucketFindings = await this.scanCloudBuckets(allFindings, options);
-                    
-                    this.debugLog(`Bucket scan returned ${bucketFindings.length} enhanced findings`);
-                    
-                    // Replace original bucket findings with enhanced ones
-                    const originalBucketCount = allFindings.filter(f => f.category === 'cloudStorage').length;
-                    const nonBucketFindings = allFindings.filter(f => f.category !== 'cloudStorage');
-                    allFindings = [...nonBucketFindings, ...bucketFindings];
-                    
-                    this.debugLog(`Replaced ${originalBucketCount} original bucket findings with ${bucketFindings.length} enhanced findings`);
-                    this.debugLog('Enhanced bucket findings risk levels:', bucketFindings.map(f => `${f.value}: ${f.riskLevel}`));
-                    this.debugLog('Total findings after bucket enhancement:', allFindings.length);
-                } else {
-                    this.debugLog('Bucket scanning is disabled');
-                }
-                
-                this.scanResults = allFindings;
-                
-                // Update statistics
-                this.updateStats(performance.now() - startTime, patterns.length);
-                
-                return allFindings;
+                const fullFindings = await this.scanFullContent(content, patterns, scanOptions);
+                allFindings = this.combineResults(visibleFindings, fullFindings);
             }
-            
-            return visibleFindings;
-            
+
+            allFindings = this.applyFindingLimit(allFindings);
+
+            if (this.isBucketScanningEnabled() && !options.skipBucketProbes) {
+                allFindings = await this.enrichBucketFindings(allFindings, options);
+            }
+
+            this.scanResults = allFindings;
+            this.lastScanState = this.inspectionTruncated ? 'truncated' : 'success';
+            this.updateStats(performance.now() - startTime, patterns.length);
+            return allFindings;
+
         } catch (error) {
             console.error('Progressive scan error:', error);
+            this.lastScanState = 'failed';
+            this.lastScanError = error.message;
             return [];
         } finally {
             this.scanInProgress = false;
@@ -166,7 +163,13 @@ class ProgressiveScanner {
             ['critical', 'high'].includes(p.riskLevel)
         );
         
-        return await this.scanWithPatterns(visibleContent, highPriorityPatterns, options);
+        const sourceKind = options.sourceKind && options.sourceKind !== 'document'
+            ? options.sourceKind
+            : 'visible';
+        return await this.scanWithPatterns(visibleContent, highPriorityPatterns, {
+            ...options,
+            sourceKind
+        });
     }
     
     /**
@@ -177,15 +180,94 @@ class ProgressiveScanner {
      * @returns {Promise<Array>} Findings
      */
     async scanFullContent(content, patterns, options) {
-        // Filter and process content
-        const filteredContent = this.filterContent(content);
-        
-        // Use all patterns for full scan
-        const mediumLowPatterns = patterns.filter(p => 
-            !['critical', 'high'].includes(p.riskLevel)
-        );
-        
-        return await this.scanWithPatterns(filteredContent, mediumLowPatterns, options);
+        const sources = this.collectSources(content, options);
+        const findings = [];
+        for (const source of sources) {
+            const part = await this.scanWithPatterns(source.text, patterns, {
+                ...options,
+                sourceKind: source.kind
+            });
+            findings.push(...part);
+            if (this.pastScanDeadline(options)) {
+                this.inspectionTruncated = true;
+                break;
+            }
+        }
+        return findings;
+    }
+
+    collectSources(content, options) {
+        const text = content || '';
+        if (options && options.sourceKind && options.sourceKind !== 'document') {
+            return [{ kind: options.sourceKind, text }];
+        }
+        const utils = (typeof window !== 'undefined' && window.ContextUtils) ||
+            (typeof ContextUtils !== 'undefined' ? ContextUtils : null);
+        const sources = [{ kind: 'visible', text: this.extractVisibleContent(text) }];
+        if (utils && utils.extractScriptBodies) {
+            sources.push({ kind: 'script', text: utils.extractScriptBodies(text) });
+        }
+        if (utils && utils.extractAttributeValues) {
+            sources.push({ kind: 'attribute', text: utils.extractAttributeValues(text) });
+        }
+        return sources.filter((source) => source.text);
+    }
+
+    pastScanDeadline(options) {
+        const budget = (options && options.scanTimeMs) ||
+            (typeof FerretWatchContracts !== 'undefined' ? FerretWatchContracts.CAPTURE_LIMITS.scanTimeMs : 250);
+        return (performance.now() - this.scanStartTime) > budget;
+    }
+
+    applyFindingLimit(findings) {
+        const maxFindings = globalThis.StorageUtils?.getSetting('maxFindings', 50);
+        if (!maxFindings || findings.length <= maxFindings) {
+            return findings;
+        }
+        this.inspectionTruncated = true;
+        return findings.slice(0, maxFindings);
+    }
+
+    async enrichBucketFindings(findings, options) {
+        const originals = findings.filter((finding) => finding.category === 'cloudStorage');
+        if (!this.shouldProbeBuckets()) {
+            return findings.map((finding) => finding.category === 'cloudStorage'
+                ? { ...finding, accessStatus: 'untested' }
+                : finding);
+        }
+        try {
+            const enriched = await this.scanCloudBuckets(findings, options);
+            if (!enriched || enriched.length === 0) {
+                return findings.map((finding) => finding.category === 'cloudStorage'
+                    ? { ...finding, accessStatus: finding.accessStatus || 'untested' }
+                    : finding);
+            }
+            const nonBucket = findings.filter((finding) => finding.category !== 'cloudStorage');
+            const covered = new Set(enriched.map((finding) => finding.value));
+            const retained = originals.filter((finding) => !covered.has(finding.value))
+                .map((finding) => ({ ...finding, accessStatus: 'untested' }));
+            return [...nonBucket, ...enriched, ...retained];
+        } catch (error) {
+            this.debugLog('Bucket enrichment failed:', error.message);
+            return findings.map((finding) => finding.category === 'cloudStorage'
+                ? { ...finding, accessStatus: 'untested' }
+                : finding);
+        }
+    }
+
+    shouldProbeBuckets() {
+        const settings = globalThis.StorageUtils?.getBucketScanningSettings?.() || {};
+        return settings.testPublicAccess === true;
+    }
+
+    async ensureBucketTester() {
+        if (this._bucketInit) {
+            try {
+                await this._bucketInit;
+            } catch (error) {
+                this.debugLog('Bucket tester init failed:', error.message);
+            }
+        }
     }
     
     /**
@@ -197,30 +279,41 @@ class ProgressiveScanner {
      */
     async scanWithPatterns(content, patterns, options) {
         const findings = [];
-        const maxFindings = window.StorageUtils?.getSetting('maxFindings', 10);
-        
+        const maxFindings = options.deferLimit ? Infinity : globalThis.StorageUtils?.getSetting('maxFindings', 50);
+        const matchCap = (typeof FerretWatchContracts !== 'undefined'
+            ? FerretWatchContracts.CAPTURE_LIMITS.matchesPerPattern
+            : 200);
+
         for (const patternConfig of patterns) {
-            // Check if scan should be aborted
+            // Check between patterns as well as sources.
+            if (this.pastScanDeadline(options)) {
+                this.inspectionTruncated = true;
+                break;
+            }
             if (this.abortController?.signal.aborted) {
                 break;
             }
             
             // Check if category is enabled
-            if (!window.StorageUtils?.isCategoryEnabled(patternConfig.category)) {
+            if (!globalThis.StorageUtils?.isCategoryEnabled(patternConfig.category)) {
                 continue;
             }
             
             try {
                 // Batch process matches to avoid blocking
-                const matches = await this.batchProcessMatches(content, patternConfig);
+                const matches = await this.batchProcessMatches(content, patternConfig, matchCap);
+                if (matches.truncated) {
+                    this.inspectionTruncated = true;
+                }
                 
-                for (const matchObj of matches) {
+                for (const matchObj of matches.items) {
                     if (findings.length >= maxFindings) {
                         break;
                     }
-                    
-                    // Validate the match
-                    if (this.isValidSecret(matchObj.value, patternConfig)) {
+                    const capturedValue = trimCapturedSecret(matchObj.value);
+                    if (!capturedValue || !this.isValidSecret(capturedValue, patternConfig)) {
+                        continue;
+                    }
                         // Extract context around the match (50 chars before and after)
                         const contextStart = Math.max(0, matchObj.index - 50);
                         const contextEnd = Math.min(content.length, matchObj.index + matchObj.value.length + 50);
@@ -238,14 +331,20 @@ class ProgressiveScanner {
                             .trim();
                         
                         const finding = {
-                            value: matchObj.value,
+                            value: capturedValue,
                             type: patternConfig.type || patternConfig.description,
+                            patternId: patternConfig.id || patternConfig.type || patternConfig.description,
                             riskLevel: patternConfig.risk || patternConfig.riskLevel,
                             category: patternConfig.category || 'unknown',
                             context: context,
                             position: matchObj.index,
-                            timestamp: Date.now()
+                            timestamp: Date.now(),
+                            sourceKind: options.sourceKind || 'document',
+                            sourceUrl: options.sourceUrl || (typeof location !== 'undefined' ? location.href : '')
                         };
+                        if (typeof FerretWatchContracts !== 'undefined') {
+                            finding.id = FerretWatchContracts.findingId(finding);
+                        }
                         
                         // Add provider information for cloud storage findings
                         if (patternConfig.category === 'cloudStorage' && patternConfig.provider) {
@@ -276,7 +375,6 @@ class ProgressiveScanner {
                         }
                         
                         findings.push(finding);
-                    }
                 }
                 
                 // Yield control periodically to prevent blocking
@@ -298,30 +396,40 @@ class ProgressiveScanner {
      * @param {object} patternConfig - Pattern configuration
      * @returns {Promise<Array>} Matches with position info
      */
-    async batchProcessMatches(content, patternConfig) {
+    async batchProcessMatches(content, patternConfig, matchCap) {
         const matches = [];
         const regex = patternConfig.regex;
-        
+        const cap = matchCap || 200;
+        let truncated = false;
+
         try {
-            // Use matchAll to get match objects with position information
+            if (regex && typeof regex.lastIndex === 'number') {
+                regex.lastIndex = 0;
+            }
             const matchIterator = content.matchAll(regex);
             for (const match of matchIterator) {
+                if (matches.length >= cap) {
+                    truncated = true;
+                    break;
+                }
                 matches.push({
                     value: match[0],
                     index: match.index,
                     fullMatch: match
                 });
-                
-                // Yield control periodically for large numbers of matches
+
                 if (matches.length % 100 === 0) {
                     await this.yieldControl();
                 }
             }
         } catch (error) {
             console.warn('Regex matching error:', error);
-            // Fallback to simpler matching without position
             const simpleMatches = content.match(regex) || [];
             simpleMatches.forEach(match => {
+                if (matches.length >= cap) {
+                    truncated = true;
+                    return;
+                }
                 matches.push({
                     value: match,
                     index: content.indexOf(match),
@@ -329,8 +437,8 @@ class ProgressiveScanner {
                 });
             });
         }
-        
-        return matches;
+
+        return { items: matches, truncated };
     }
     
     /**
@@ -341,8 +449,8 @@ class ProgressiveScanner {
      * @returns {Promise<void>}
      */
     debouncedScan(content, patterns, options = {}) {
-        const delay = window.StorageUtils?.getSetting('scanDelay', 500);
-        const enableDebounce = window.StorageUtils?.getSetting('enableDebounce', true);
+        const delay = globalThis.StorageUtils?.getSetting('scanDelay', 500);
+        const enableDebounce = globalThis.StorageUtils?.getSetting('enableDebounce', true);
         
         if (!enableDebounce) {
             return this.progressiveScan(content, patterns, options);
@@ -371,9 +479,17 @@ class ProgressiveScanner {
         this.debugLog('scanCloudBuckets called with', findings.length, 'findings');
         this.debugLog('bucketTester available:', !!this.bucketTester);
         
+        await this.ensureBucketTester();
+        if (!this.shouldProbeBuckets()) {
+            return findings
+                .filter((finding) => finding.category === 'cloudStorage')
+                .map((finding) => ({ ...finding, accessStatus: 'untested' }));
+        }
         if (!this.bucketTester || !findings.length) {
             this.debugLog('Bucket scanning skipped - no tester or no findings');
-            return [];
+            return findings
+                .filter((finding) => finding.category === 'cloudStorage')
+                .map((finding) => ({ ...finding, accessStatus: 'untested' }));
         }
         
         try {
@@ -410,7 +526,7 @@ class ProgressiveScanner {
             }
             
             if (bucketInfoList.length === 0) {
-                return [];
+                return bucketFindings.map((finding) => ({ ...finding, accessStatus: 'parse_failure' }));
             }
             
             // Test bucket accessibility with concurrency control
@@ -427,7 +543,9 @@ class ProgressiveScanner {
             
         } catch (error) {
             console.error('Cloud bucket scanning error:', error);
-            return [];
+            return findings
+                .filter((finding) => finding.category === 'cloudStorage')
+                .map((finding) => ({ ...finding, accessStatus: 'network_failure' }));
         }
     }
     
@@ -439,17 +557,13 @@ class ProgressiveScanner {
      */
     async testBucketAccessibility(bucketInfoList) {
         const results = [];
-        const bucketSettings = window.StorageUtils?.getBucketScanningSettings() || {};
+        const bucketSettings = globalThis.StorageUtils?.getBucketScanningSettings() || {};
         const maxConcurrent = bucketSettings.maxConcurrentTests || 3;
         const testTimeout = bucketSettings.testTimeout || 5000;
         
         // Process buckets in chunks to respect concurrency limits
         for (let i = 0; i < bucketInfoList.length; i += maxConcurrent) {
-            // Check if scan should be aborted
-            if (this.abortController?.signal.aborted) {
-                break;
-            }
-            
+            if (this.abortController?.signal.aborted) break;
             const chunk = bucketInfoList.slice(i, i + maxConcurrent);
             const chunkPromises = chunk.map(async (bucketInfo) => {
                 try {
@@ -471,17 +585,17 @@ class ProgressiveScanner {
                         return { bucketInfo, testResult: result, testUrl: bucketInfo.testUrls[0] };
                     }
                     
-                    return { 
-                        bucketInfo, 
-                        testResult: { accessible: false, error: 'No test URLs available' },
-                        testUrl: null 
+                    return {
+                        bucketInfo,
+                        testResult: { accessible: null, untested: true, error: 'No test URLs available' },
+                        testUrl: null
                     };
-                    
+
                 } catch (error) {
-                    return { 
-                        bucketInfo, 
-                        testResult: { accessible: false, error: error.message },
-                        testUrl: null 
+                    return {
+                        bucketInfo,
+                        testResult: { accessible: null, failed: true, error: error.message },
+                        testUrl: null
                     };
                 }
             });
@@ -490,7 +604,7 @@ class ProgressiveScanner {
             results.push(...chunkResults.map(result => 
                 result.status === 'fulfilled' ? result.value : {
                     bucketInfo: null,
-                    testResult: { accessible: false, error: 'Test failed' },
+                    testResult: { accessible: null, failed: true, error: 'Test failed' },
                     testUrl: null
                 }
             ));
@@ -517,15 +631,17 @@ class ProgressiveScanner {
             }
             
             const originalFinding = bucketInfo.originalFinding;
-            
-            // Create enhanced finding with bucket test results
+            const accessStatus = this.classifyAccess(testResult);
+
             const enhancedFinding = {
                 ...originalFinding,
+                accessStatus,
                 bucketInfo: {
                     bucketName: bucketInfo.bucketName,
                     provider: bucketInfo.provider,
                     region: bucketInfo.region,
                     accessible: testResult.accessible,
+                    accessStatus,
                     testUrl: testUrl,
                     testResults: {
                         statusCode: testResult.statusCode,
@@ -543,15 +659,16 @@ class ProgressiveScanner {
             }
             
             // Update context to be more informative about listing capability
-            if (testResult.listingEnabled === true) {
-                enhancedFinding.context = `⚠️ MISCONFIGURATION: Bucket allows public listing: ${bucketInfo.bucketName} (${bucketInfo.provider.toUpperCase()})`;
-            } else if (testResult.accessible === true && testResult.listingEnabled === false) {
-                enhancedFinding.context = `ℹ️ Bucket exists but listing disabled: ${bucketInfo.bucketName} (${bucketInfo.provider.toUpperCase()})`;
-            } else if (testResult.accessible === false) {
-                enhancedFinding.context = `ℹ️ Secured bucket: ${bucketInfo.bucketName} (${bucketInfo.provider.toUpperCase()}) - Access denied`;
-            } else {
-                enhancedFinding.context = `ℹ️ Bucket: ${bucketInfo.bucketName} (${bucketInfo.provider.toUpperCase()}) - Access status unknown (CORS)`;
-            }
+            const labels = {
+                public_listing: 'Public listing',
+                accessible_object: 'Accessible object',
+                access_denied: 'Access denied',
+                untested: 'Not tested',
+                timeout: 'Probe timed out',
+                network_failure: 'Probe failed',
+                parse_failure: 'Could not parse probe response'
+            };
+            enhancedFinding.context = `${labels[accessStatus] || accessStatus}: ${bucketInfo.bucketName} (${bucketInfo.provider.toUpperCase()})`;
             
             // Debug: Log test results to understand what's happening
             this.debugLog('Bucket test result for', bucketInfo.bucketName, ':', {
@@ -563,26 +680,18 @@ class ProgressiveScanner {
             });
             
             // Update risk level and type based on LISTING capability
-            if (testResult.listingEnabled === true) {
-                // Bucket allows public listing - security misconfiguration
+            if (accessStatus === 'public_listing') {
                 enhancedFinding.riskLevel = 'medium';
-                enhancedFinding.type = `${originalFinding.type} (Listing Enabled)`;
-                this.debugLog(`Setting bucket ${bucketInfo.bucketName} to MEDIUM risk - listing enabled`);
-            } else if (testResult.accessible === true && testResult.listingEnabled === false) {
-                // Bucket exists but doesn't allow listing - informational only
+                enhancedFinding.type = `${originalFinding.type} (Public listing)`;
+            } else if (accessStatus === 'accessible_object') {
                 enhancedFinding.riskLevel = 'low';
-                enhancedFinding.type = `${originalFinding.type} (No Listing)`;
-                this.debugLog(`ℹ️ Setting bucket ${bucketInfo.bucketName} to LOW risk - no listing`);
-            } else if (testResult.accessible === false) {
-                // Bucket is secured/access denied - informational only
+                enhancedFinding.type = `${originalFinding.type} (Accessible object)`;
+            } else if (accessStatus === 'access_denied') {
                 enhancedFinding.riskLevel = 'low';
-                enhancedFinding.type = `${originalFinding.type} (Secured)`;
-                this.debugLog(`🔒 Setting bucket ${bucketInfo.bucketName} to LOW risk - secured`);
+                enhancedFinding.type = `${originalFinding.type} (Access denied)`;
             } else {
-                // Unknown accessibility (CORS or other issues) - informational only
-                enhancedFinding.riskLevel = 'low';
-                enhancedFinding.type = `${originalFinding.type} (Unknown)`;
-                this.debugLog(`❓ Setting bucket ${bucketInfo.bucketName} to LOW risk - unknown status`);
+                enhancedFinding.riskLevel = originalFinding.riskLevel || 'low';
+                enhancedFinding.type = `${originalFinding.type} (${accessStatus})`;
             }
             
             this.debugLog(`Final risk level for ${bucketInfo.bucketName}: ${enhancedFinding.riskLevel}`);
@@ -599,11 +708,11 @@ class ProgressiveScanner {
      * @private
      */
     isBucketScanningEnabled() {
-        if (!window.StorageUtils) {
+        if (!globalThis.StorageUtils) {
             return false;
         }
         
-        return window.StorageUtils.isBucketScanningEnabled();
+        return globalThis.StorageUtils.isBucketScanningEnabled();
     }
 
     /**
@@ -612,11 +721,11 @@ class ProgressiveScanner {
      * @returns {boolean} True if provider is enabled
      */
     isProviderEnabled(provider) {
-        if (!window.StorageUtils) {
+        if (!globalThis.StorageUtils) {
             return true; // Default to enabled if no settings available
         }
         
-        return window.StorageUtils.isProviderEnabled(provider);
+        return globalThis.StorageUtils.isProviderEnabled(provider);
     }
     
     /**
@@ -649,12 +758,23 @@ class ProgressiveScanner {
         return content;
     }
     
-    isValidSecret(match, patternConfig) {
-        // Use existing validation logic
-        if (typeof window.isValidSecret === 'function') {
-            return window.isValidSecret(match, patternConfig);
+    classifyAccess(testResult) {
+        if (typeof FerretWatchContracts !== 'undefined') {
+            return FerretWatchContracts.classifyBucketAccess(testResult);
         }
-        return true; // Fallback
+        if (typeof window !== 'undefined' && window.FerretWatchContracts) {
+            return window.FerretWatchContracts.classifyBucketAccess(testResult);
+        }
+        return 'untested';
+    }
+
+    isValidSecret(match, patternConfig) {
+        const validator = (typeof patternValidator !== 'undefined' && patternValidator) ||
+            (typeof window !== 'undefined' && window.patternValidator);
+        if (validator && typeof validator.isValidSecret === 'function') {
+            return validator.isValidSecret(match, patternConfig || {});
+        }
+        return true;
     }
     
     combineResults(visible, full) {
@@ -663,8 +783,9 @@ class ProgressiveScanner {
         const seen = new Set();
         
         combined.forEach(finding => {
-            if (!seen.has(finding.value)) {
-                seen.add(finding.value);
+            const key = (finding.patternId || finding.type || '') + '\n' + finding.value;
+            if (!seen.has(key)) {
+                seen.add(key);
                 unique.push(finding);
             }
         });
@@ -683,8 +804,8 @@ class ProgressiveScanner {
     }
     
     isDomainWhitelisted() {
-        if (window.StorageUtils) {
-            return window.StorageUtils.isDomainWhitelisted(window.location.hostname);
+        if (globalThis.StorageUtils) {
+            return globalThis.StorageUtils.isDomainWhitelisted(window.location.hostname);
         }
         return false;
     }

@@ -35,6 +35,7 @@ class TestRunner {
             runUnit: true,
             runIntegration: true,
             runPerformance: true,
+            runLegacy: false,
             verbose: true,
             generateReport: true,
             exitOnFailure: true
@@ -51,10 +52,14 @@ class TestRunner {
             // Register unit tests
             if (this.config.runUnit) {
                 if (typeof require !== 'undefined') {
-                    const patternsTest = require('./unit/patterns.test.js');
-                    const utilsTest = require('./unit/utils.test.js');
-                    this.registerSuite('patterns', patternsTest.testFramework);
-                    this.registerSuite('utils', utilsTest.testFramework);
+                    const regression = require('./unit/regression.test.js');
+                    this.registerSuite('regression', regression.testFramework);
+                    if (this.config.runLegacy) {
+                        const patternsTest = require('./unit/patterns.test.js');
+                        const utilsTest = require('./unit/utils.test.js');
+                        this.registerSuite('patterns', patternsTest.testFramework);
+                        this.registerSuite('utils', utilsTest.testFramework);
+                    }
                 } else {
                     // Browser environment - tests should be loaded via script tags
                     if (typeof window !== 'undefined') {
@@ -67,8 +72,11 @@ class TestRunner {
             // Register integration tests
             if (this.config.runIntegration) {
                 if (typeof require !== 'undefined') {
-                    const integrationTest = require('./integration/scanning.test.js');
-                    this.registerSuite('integration', integrationTest.testFramework);
+                    this.registerSuite('integration', require('./integration/background-monitor.test.js').testFramework);
+                    if (this.config.runLegacy) {
+                        const integrationTest = require('./integration/scanning.test.js');
+                        this.registerSuite('integration', integrationTest.testFramework);
+                    }
                 } else {
                     if (typeof window !== 'undefined' && window.integrationTests) {
                         this.registerSuite('integration', window.integrationTests);
@@ -102,13 +110,15 @@ class TestRunner {
         
         try {
             const results = await testFramework.runAll();
-            
+            results.failures = results.failures || [];
+            results.executionTime = results.executionTime || 0;
+
             console.log(`\n📊 ${name.toUpperCase()} TEST RESULTS:`);
             console.log(`   Passed: ${results.passed} ✅`);
             console.log(`   Failed: ${results.failed} ❌`);
             console.log(`   Total:  ${results.total}`);
             console.log(`   Time:   ${results.executionTime}ms`);
-            
+
             if (results.failed > 0) {
                 console.log(`\n❌ Failed tests in ${name}:`);
                 results.failures.forEach(failure => {
@@ -207,7 +217,7 @@ class TestRunner {
         
         // Overall status
         if (overall.failed === 0) {
-            console.log(`\n🎉 ALL TESTS PASSED! Extension is ready for deployment.`);
+            console.log(`\n🎉 ALL AUTOMATED TESTS PASSED. Real-browser acceptance is separate.`);
         } else {
             console.log(`\n💥 ${overall.failed} TEST(S) FAILED! Review failures before deployment.`);
         }
@@ -219,7 +229,7 @@ class TestRunner {
         const report = {
             metadata: {
                 extensionName: 'Firefox Credential Scanner',
-                version: '1.5.0',
+                version: typeof require !== 'undefined' ? require('../manifest.json').version : 'unknown',
                 testRunDate: new Date().toISOString(),
                 testDuration: this.endTime - this.startTime,
                 nodeVersion: typeof process !== 'undefined' ? process.version : 'browser',
@@ -233,8 +243,8 @@ class TestRunner {
                 memoryUsage: this.getMemoryUsage()
             },
             coverage: {
-                unit: this.results.patterns ? 'patterns, entropy, masking' : 'not run',
-                integration: this.results.integration ? 'scanning pipeline, export functionality' : 'not run',
+                unit: this.results.regression ? 'scanner, contracts, patterns, settings and authorization regressions' : 'not run',
+                integration: this.results.integration ? 'manifest-loaded background, native events, lifecycle, settings, content reports and DOM mutations (mock browser APIs)' : 'not run',
                 performance: this.results.performance ? 'benchmarks, memory, concurrency' : 'not run'
             },
             recommendations: this.generateRecommendations()
@@ -307,7 +317,7 @@ class TestRunner {
         }
         
         // Coverage recommendations
-        if (!this.results.patterns && !this.results.utils) {
+        if (!this.results.regression && !this.results.patterns && !this.results.utils) {
             recommendations.push('Add unit tests for core functionality');
         }
         
@@ -321,7 +331,7 @@ class TestRunner {
         
         // Success recommendations
         if (overall.failed === 0 && overall.total > 10) {
-            recommendations.push('All tests passing - extension ready for deployment');
+            recommendations.push('Automated tests passed; run the documented browser acceptance checks');
             recommendations.push('Consider adding more edge case tests for robustness');
         }
         
@@ -339,7 +349,10 @@ class TestRunner {
 
     // Utility method for CI/CD integration
     getExitCode() {
-        return this.results.overall && this.results.overall.failed === 0 ? 0 : 1;
+        if (!this.results.overall) {
+            return 1;
+        }
+        return this.results.overall.failed === 0 ? 0 : 1;
     }
 }
 
