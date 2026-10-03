@@ -23,6 +23,13 @@ const COMPILED_PATTERNS = {
     MYSQL_URI: /\b(mysql:\/\/[^\s"'<>]+)\b/g,
     POSTGRES_URI: /\b(postgres(?:ql)?:\/\/[^\s"'<>]+)\b/g,
     
+    // Supabase. Legacy anon and service_role keys are HS256 JWTs whose
+    // payload starts with {"iss":"supabase". New keys are opaque.
+    SUPABASE_URL: /\bhttps:\/\/[a-z0-9]{20}\.supabase\.co\b/g,
+    SUPABASE_PUBLISHABLE_KEY: /\bsb_publishable_[A-Za-z0-9]{22}_[A-Za-z0-9]{8}\b/g,
+    SUPABASE_SECRET_KEY: /\bsb_secret_[A-Za-z0-9]{22}_[A-Za-z0-9]{8}\b/g,
+    SUPABASE_LEGACY_KEY: /\beyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZS[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\b/g,
+
     // API Keys - Generic but optimized
     STRIPE_KEY: /\b((sk|pk)_(live|test)_[a-zA-Z0-9]{24,})\b/g,
     SENDGRID_KEY: /\b(SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43})\b/g,
@@ -75,6 +82,18 @@ const SECURITY_PATTERNS = {
             description: "Stripe API Key",
             riskLevel: "high",
             category: "payment"
+        },
+        supabaseSecretKey: {
+            pattern: COMPILED_PATTERNS.SUPABASE_SECRET_KEY,
+            description: "Supabase Secret Key",
+            riskLevel: "critical",
+            category: "supabase"
+        },
+        supabaseLegacyKey: {
+            pattern: COMPILED_PATTERNS.SUPABASE_LEGACY_KEY,
+            description: "Supabase Legacy API Key",
+            riskLevel: "critical",
+            category: "supabase"
         }
     },
     
@@ -103,6 +122,12 @@ const SECURITY_PATTERNS = {
             description: "PostgreSQL Connection String",
             riskLevel: "critical",
             category: "database"
+        },
+        supabasePublishableKey: {
+            pattern: COMPILED_PATTERNS.SUPABASE_PUBLISHABLE_KEY,
+            description: "Supabase Publishable Key",
+            riskLevel: "high",
+            category: "supabase"
         }
     },
     
@@ -150,6 +175,12 @@ const SECURITY_PATTERNS = {
             description: "Slack User Token",
             riskLevel: "high",
             category: "messaging"
+        },
+        supabaseProjectUrl: {
+            pattern: COMPILED_PATTERNS.SUPABASE_URL,
+            description: "Supabase Project URL",
+            riskLevel: "low",
+            category: "supabase"
         }
     }
 };

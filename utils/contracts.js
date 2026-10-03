@@ -17,7 +17,7 @@ const CAPTURE_LIMITS = {
     findingsPerTab: 1000
 };
 
-const PATTERN_CATEGORIES = ['aws', 'github', 'database', 'payment', 'messaging', 'email', 'cloudStorage'];
+const PATTERN_CATEGORIES = ['aws', 'github', 'database', 'payment', 'messaging', 'email', 'cloudStorage', 'supabase'];
 
 const SCAN_STATES = ['pending', 'success', 'skipped', 'truncated', 'unavailable', 'failed'];
 

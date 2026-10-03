@@ -120,6 +120,43 @@ testFramework.test('progressive scan attributes visible, attribute, script, and 
     Assert.equal(json.find((finding) => finding.value === STRIPE).sourceUrl, 'https://example.com/api', 'response url');
 });
 
+testFramework.test('supabase project urls and api keys are detected', async () => {
+    installScannerSettings({ enabled: false });
+    const scanner = new ProgressiveScanner();
+    const header = Buffer.from('{"alg":"HS256","typ":"JWT"}').toString('base64url');
+    const legacy = (role) => `${header}.${Buffer.from(JSON.stringify({
+        iss: 'supabase', ref: 'abcdefghijklmnopqrst', role, iat: 1, exp: 2
+    })).toString('base64url')}.c2lnbmF0dXJl`;
+    const project = 'https://abcdefghijklmnopqrst.supabase.co';
+    const publishable = 'sb_publishable_' + 'a'.repeat(22) + '_' + 'b'.repeat(8);
+    const secret = 'sb_secret_' + 'c'.repeat(22) + '_' + 'd'.repeat(8);
+    const anon = legacy('anon');
+    const service = legacy('service_role');
+    const otherJwt = `${header}.${Buffer.from('{"sub":"1234567890"}').toString('base64url')}.c2lnbmF0dXJl`;
+    const text = [
+        project + '/rest/v1/todos',
+        publishable,
+        secret,
+        anon,
+        service,
+        otherJwt,
+        'sb_secret_too_short'
+    ].join('\n');
+    const findings = await scanner.progressiveScan(text, patterns.patternManager.getAllPatterns(), {
+        sourceKind: 'response',
+        sourceUrl: 'https://example.com/app',
+        scanTimeMs: -1
+    });
+    const byValue = new Map(findings.map((finding) => [finding.value, finding]));
+    Assert.equal(byValue.get(project).type, 'Supabase Project URL', 'project url');
+    Assert.equal(byValue.get(publishable).riskLevel, 'high', 'publishable key');
+    Assert.equal(byValue.get(secret).riskLevel, 'critical', 'secret key');
+    Assert.equal(byValue.get(anon).type, 'Supabase Legacy API Key', 'anon jwt');
+    Assert.equal(byValue.get(service).type, 'Supabase Legacy API Key', 'service role jwt');
+    Assert.false(byValue.has(otherJwt), 'unrelated jwt');
+    Assert.false(findings.some((finding) => finding.value === 'sb_secret_too_short'), 'short secret');
+});
+
 testFramework.test('a short time budget still scans later patterns', async () => {
     installScannerSettings({ enabled: false });
     const scanner = new ProgressiveScanner();
