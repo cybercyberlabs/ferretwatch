@@ -2,7 +2,7 @@
 
 ![CyberCyberLabs Logo](images/browser-extension-logo.svg)
 
-**FerretWatch v2.3.5** - A Firefox extension that automatically scans pages, scripts, and text responses for exposed credentials and secrets. Monitoring stays on during normal browsing. Firefox is the primary target. Chrome and Edge builds have limited monitoring because response-body inspection uses a Firefox-only stream filter. Real-browser acceptance remains open; see [monitoring validation](docs/monitoring-validation.md).
+**FerretWatch v2.3.6** - A Firefox extension that automatically scans pages, scripts, and text responses for exposed credentials and secrets. Monitoring stays on during normal browsing. Firefox is the primary target. Chrome and Edge builds have limited monitoring because response-body inspection uses a Firefox-only stream filter. Real-browser acceptance remains open; see [monitoring validation](docs/monitoring-validation.md).
 
 ## Author
 
@@ -65,7 +65,7 @@ Public-access probes for discovered buckets are optional and off when `testPubli
 ## Installation
 
 ### From Pre-built Package (Recommended)
-1. Download the latest `ferretwatch-firefox-v2.3.5.zip` from the dist/ folder
+1. Download the latest `ferretwatch-firefox-v2.3.6.zip` from the dist/ folder
 2. Extract the ZIP file to a permanent location on your computer
 3. Open Firefox and navigate to `about:debugging`
 4. Click "This Firefox" on the left sidebar

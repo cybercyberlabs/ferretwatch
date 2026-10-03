@@ -508,7 +508,7 @@ async function exportData(format) {
             domain: url.hostname,
             url: currentTab.url,
             title: currentTab.title,
-            scannerVersion: '2.3.5',
+            scannerVersion: '2.3.6',
             findings: findings.map(f => ({
                 id: f.id || '',
                 type: f.type || 'Unknown',
